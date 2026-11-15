@@ -138,7 +138,7 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat: budova, měřidlo, umístění…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
   <div class="sugg hide" id="sugg"></div>
 </div>
-<div id="upd" class="card hide" style="border-color:var(--acc)"><strong>Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
+<div id="upd" class="card hide" style="border-color:var(--acc)"><strong id="updtxt">Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
 
 <section id="home">
@@ -194,7 +194,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.12.2';
+const VERSION = '1.12.3';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -544,12 +544,21 @@ $('theme').onclick = () => {
 };
 
 // ================= verze a aktualizace =================
+{ const u = lsGet('meridla.updatedTo'); if (u) { lsSet('meridla.updatedTo', ''); if (u === VERSION) setTimeout(() => toast('Aktualizováno na verzi ' + VERSION + ' ✓', 4000), 2600); } }
 $('ver').textContent = 'verze ' + VERSION;
 function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Ahoj, ' + w + ' 👋' : 'Ahoj 👋'; }
 showWho();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(reg => {
-    const offer = w => { $('upd').classList.remove('hide'); $('updgo').onclick = () => w.postMessage('skip'); };
+    // zjistí číslo nové verze z čekajícího service workeru a ukáže ho v hlášce
+    const offer = async w => {
+      let v = '';
+      try { const t = await (await fetch('sw.js?v=' + Date.now(), { cache: 'no-store' })).text(); const m = t.match(/VERSION = '([^']+)'/); if (m) v = m[1]; } catch (e) {}
+      $('updtxt').textContent = v ? 'Je k dispozici nová verze ' + v + ' (máš ' + VERSION + ').' : 'Je k dispozici nová verze.';
+      $('updgo').textContent = v ? 'Aktualizovat na ' + v : 'Aktualizovat';
+      $('upd').classList.remove('hide');
+      $('updgo').onclick = () => { if (v) lsSet('meridla.updatedTo', v); w.postMessage('skip'); };
+    };
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
     reg.addEventListener('updatefound', () => { const w = reg.installing; w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w); }); });
     reg.update().catch(() => {});
