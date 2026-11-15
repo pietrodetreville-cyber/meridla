@@ -45,7 +45,7 @@ function setup() {
   let m = ss.getSheetByName(SHEET_METERS);
   if (!m) {
     m = ss.insertSheet(SHEET_METERS);
-    m.appendRow(['id', 'Název', 'Typ', 'Budova', 'Interval (dny)', 'Umístění']);
+    m.appendRow(['id', 'Název', 'Typ', 'Budova', 'Interval (dny)', 'Umístění', 'Nápověda_místo', 'Nápověda_focení', 'Zaokrouhlit_desetinné_místo']);
     ['271', '272', '273', '274', '275'].forEach(b => ['Elektroměr', 'Vodoměr', 'Plynoměr'].forEach(t => m.appendRow(['', t, t, b, '', ''])));
     ['Elektroměr', 'Vodoměr', 'Plynoměr', 'Kalorimetr'].forEach(t => m.appendRow(['', t, t, 'Kotelna', '', '']));
     m.setFrozenRows(1);
@@ -60,6 +60,9 @@ function setup() {
     r.setFrozenRows(1);
   }
 
+  // číslo měřidla jako id: vždy jako text (aby se neztratily nuly na začátku)
+  r.getRange('B:B').setNumberFormat('@');
+  m.getRange('A:A').setNumberFormat('@');
   let p = ss.getSheetByName(SHEET_PEOPLE);
   if (!p) {
     p = ss.insertSheet(SHEET_PEOPLE);
@@ -84,7 +87,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -132,7 +135,7 @@ function table_(name) {
   if (!sh) return null;
   const v = sh.getDataRange().getValues();
   if (!v.length) return { sheet: sh, rows: [] };
-  const head = v[0].map(h => String(h).trim().toLowerCase());
+  const head = v[0].map(h => String(h).normalize('NFC').trim().toLowerCase());
   return { sheet: sh, rows: v.slice(1).map((r, i) => { const o = {}; head.forEach((h, k) => { if (h) o[h] = r[k]; }); return { row: i + 2, v: o }; }) };
 }
 
@@ -173,24 +176,39 @@ function fillIds_() {
 }
 
 // měřidla: vlastnosti z listu Měřidla, doplněné výchozími hodnotami podle typu z listu Typy
+function findKey_(v, re) { return Object.keys(v).find(k => re.test(k)); }
+
+function round_(x, d) { const f = Math.pow(10, d); return Math.round(x * f) / f; }
+
 function meters_() {
   const types = {};
   const tt = table_(SHEET_TYPES);
   if (tt) tt.rows.forEach(r => { const k = String(r.v['typ'] || '').trim().toLowerCase(); if (k) types[k] = r.v; });
   const mt = table_(SHEET_METERS);
   const num = x => Number(x) > 0 ? Math.round(Number(x)) : 0;
+  const seen = {};
   return mt.rows.filter(r => String(r.v['id'] || '').trim()).map(r => {
     const v = r.v, typeName = String(v['typ'] || '').trim(), t = types[typeName.toLowerCase()] || {};
+    // stejné id u dvou měřidel by slilo jejich historii: druhé a další dostane příponu
+    let id = String(v['id']).trim();
+    if (seen[id]) { seen[id]++; id = id + '#' + seen[id]; } else seen[id] = 1;
+    const dk = findKey_(v, /zaokrouh/), dr = dk ? v[dk] : '';
+    const dec = (dr !== '' && dr !== null && isFinite(Number(dr)) && Number(dr) >= 0 && Number(dr) <= 4) ? Math.round(Number(dr)) : 1;
+    const pk = findKey_(v, /^nápověda[_ ]místo/), fk = findKey_(v, /^nápověda[_ ]focení/);
+    const bRaw = String(v['budova'] || '').trim();
     return {
-      id: String(v['id']).trim(),
+      id: id,
       name: String(v['název'] || typeName).trim(),
       typeName: typeName,
       type: String(v['zobrazení'] || t['zobrazení'] || typeName),
       digits: v['číslic před čárkou'] || t['číslic před čárkou'] || '',
       hint: String(v['nápověda pro čtení'] || t['nápověda pro čtení'] || ''),
       unit: String(v['jednotka'] || t['jednotka'] || ''),
-      building: String(v['budova'] || '').trim(),
+      building: bRaw ? bRaw.charAt(0).toUpperCase() + bRaw.slice(1) : '',
       place: String(v['umístění'] || '').trim(),
+      placeHelp: pk ? String(v[pk] || '').trim() : '',
+      shootHelp: fk ? String(v[fk] || '').trim() : '',
+      decimals: dec,
       icon: String(t['ikona'] || '').trim(),
       interval: num(v['interval (dny)'] || v['interval']) || num(t['výchozí interval (dny)']) || 7
     };
@@ -283,7 +301,7 @@ function readWithAi_(meter, b64) {
   if (!meter || !b64) return { ok: false, error: 'data' };
   const models = geminiModels_();
   if (!models.length) return { ok: false, error: 'nomodel', detail: AI_DETAIL || 'žádný model Gemini Flash' };
-  const prompt = 'Na fotce je měřidlo: ' + meter.name + ' (druh: ' + meter.typeName + ', zobrazení: ' + meter.type + ', jednotka: ' + meter.unit + ', počet číslic před čárkou: ' + meter.digits + '). ' +
+  const prompt = 'Na fotce je měřidlo: ' + meter.name + ' (druh: ' + meter.typeName + ', zobrazení: ' + meter.type + ', jednotka: ' + meter.unit + (Number(meter.digits) >= 2 ? ', počet číslic před čárkou: ' + meter.digits : '') + '). ' +
     (meter.hint ? meter.hint + ' ' : '') +
     'Přečti aktuální stav měřidla jako jedno číslo s desetinnou tečkou. Odpověz jen JSON {"value": číslo}. Když stav nejde spolehlivě přečíst, dej {"value": null}.';
   const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
@@ -315,7 +333,7 @@ function doPost(e) {
 
   const meter = meters_().find(m => m.id === body.id);
   const noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
-  const value = noValue ? NaN : Number(body.value);
+  const value = noValue ? NaN : (meter ? round_(Number(String(body.value).replace(',', '.')), meter.decimals) : Number(String(body.value).replace(',', '.')));
   if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo)) return ok_({ ok: false, error: 'data' });
 
   const lock = LockService.getScriptLock();
@@ -433,7 +451,7 @@ function formPage_(rid, key) {
 function submitValue(rid, key, value, name) {
   rid = String(rid || '');
   if (!rid || String(key || '') !== formKey_(rid)) throw new Error('Odkaz není platný.');
-  const v = Number(String(value).replace(/\s/g, '').replace(',', '.'));
+  let v = Number(String(value).replace(/\s/g, '').replace(',', '.'));
   if (!isFinite(v) || String(value).trim() === '') throw new Error('Zadej prosím číslo.');
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
@@ -443,6 +461,8 @@ function submitValue(rid, key, value, name) {
     if (i < 0) throw new Error('Záznam nebyl nalezen.');
     const row = data[i];
     if (row[3] !== '' && row[3] !== null) throw new Error('Hodnota už je zapsaná.');
+    const mm = meters_().find(m => m.id === String(row[1]));
+    v = round_(v, mm ? mm.decimals : 1);
     let prev = null;
     for (let j = 1; j < data.length; j++) { const r = data[j]; if (j !== i && String(r[1]) === String(row[1]) && r[3] !== '' && new Date(r[0]) < new Date(row[0]) && (!prev || new Date(r[0]) > new Date(prev[0]))) prev = r; }
     const diff = prev ? Math.round((v - Number(prev[3])) * 1000) / 1000 : '';
@@ -460,6 +480,22 @@ function submitValue(rid, key, value, name) {
   } finally {
     lock.releaseLock();
   }
+}
+
+// kontrola listu Měřidla: duplicitní id, neznámý typ, chybějící budova
+function checkMeters() {
+  const tt = table_(SHEET_TYPES), mt = table_(SHEET_METERS), types = {}, rows = {}, problems = [];
+  if (tt) tt.rows.forEach(r => { const k = String(r.v['typ'] || '').trim().toLowerCase(); if (k) types[k] = 1; });
+  mt.rows.forEach(r => {
+    const id = String(r.v['id'] || '').trim(), type = String(r.v['typ'] || '').trim(), name = String(r.v['název'] || '').trim();
+    if (!id) { if (name || type) problems.push('řádek ' + r.row + ': chybí id (doplní se samo při dalším otevření appky)'); return; }
+    (rows[id] = rows[id] || []).push(r.row);
+    if (!type || !types[type.toLowerCase()]) problems.push('řádek ' + r.row + ': neznámý typ "' + type + '" (musí být v listu Typy)');
+    if (!String(r.v['budova'] || '').trim()) problems.push('řádek ' + r.row + ': chybí budova');
+  });
+  Object.keys(rows).forEach(id => { if (rows[id].length > 1) problems.push('id "' + id + '" je víckrát (řádky ' + rows[id].join(', ') + '). Musí být jedinečné, jinak se slije historie.'); });
+  const total = mt.rows.filter(r => String(r.v['id'] || '').trim()).length;
+  SpreadsheetApp.getUi().alert(problems.length ? 'Nalezeno ' + problems.length + ' problémů:\n\n' + problems.join('\n') : 'Všechna měřidla jsou v pořádku (' + total + ').');
 }
 
 // ---------- upozornění e-mailem, když není dodržen interval ----------

@@ -49,6 +49,9 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.callout{background:#2563eb14;border:1px solid #2563eb44;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.92rem;line-height:1.35}
+#vfhelp{position:absolute;left:16px;right:16px;top:calc(42% + 28vw + 16px);z-index:3;color:#fff;font-size:.95rem;line-height:1.4;text-align:center;background:#0008;border-radius:12px;padding:10px 12px}
+#vfhelp.hide{display:none}
 .spin{width:46px;height:46px;border-radius:50%;border:4px solid #ffffff3a;border-top-color:#fff;animation:spin .8s linear infinite}
 .spin.sm{width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:-3px;margin-right:8px;border-color:var(--line);border-top-color:var(--acc)}
 @keyframes spin{to{transform:rotate(360deg)}}
@@ -159,6 +162,7 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div class="card">
     <div class="mhead"><span class="ico" id="micon"></span><div><strong id="mname"></strong><div class="note" id="msub"></div></div></div>
     <div class="note" id="mlast" style="margin:10px 0"></div>
+    <div class="callout hide" id="mplace"></div>
     <div class="row"><button id="mshot" type="button">📷 Vyfotit měřidlo</button></div>
     <div class="row"><button class="sec" id="mhist" type="button">📊 Detail měření</button></div>
     <div class="row"><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
@@ -180,7 +184,7 @@ html:has(#splash:not(.out)){overflow:hidden}
     <div class="note" id="dlast"></div>
     <img class="shot hide" id="dimg" alt="Fotka měřidla" style="margin-top:10px">
     <div id="dstatus" class="note" style="margin-top:8px"></div>
-    <label for="dval">Stav měřidla</label>
+    <label for="dval" id="dlabel">Stav měřidla</label>
     <input id="dval" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 12345,6">
     <label for="dnote">Poznámka (nepovinná)</label>
     <input id="dnote" type="text" autocomplete="off">
@@ -196,6 +200,7 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div id="frame"></div>
   <div id="vfspin"><div class="spin"></div><span>Spouštím foťák…</span></div>
   <div id="hint"></div>
+  <div id="vfhelp" class="hide"></div>
   <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec" id="torch" type="button">💡 Baterka</button><button id="shot" type="button">Vyfotit</button></div>
 </div>
 <div id="toast" class="hide"></div>
@@ -204,7 +209,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.13.2';
+const VERSION = '1.14.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -219,6 +224,9 @@ const token = () => lsGet('meridla.token') || '';
 const fmtDate = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '.'; };
 const fmtDT = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '. v ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const lastInfo = m => m.last ? 'Naposledy: ' + fmtDT(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'Zatím nikdo nefotil';
+const decOf = m => Number.isInteger(m.decimals) ? m.decimals : 1;
+const roundTo = (v, d) => { const f = Math.pow(10, d); return Math.round(v * f) / f; };
+const decText = d => d === 0 ? 'zaokrouhleno na celá čísla' : d === 1 ? 'zaokrouhleno na 1 desetinné místo' : 'zaokrouhleno na ' + d + ' desetinná místa';
 const fmtNum = n => String(n).replace('.', ',');
 const parseNum = s => Number(String(s).trim().replace(/\s/g, '').replace(',', '.'));
 function toast(t, ms) { const e = $('toast'); e.textContent = t; e.classList.remove('hide'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hide'), ms || 3500); }
@@ -362,6 +370,7 @@ function openMeter(m) {
   $('micon').textContent = iconFor(m); $('mname').textContent = m.name;
   $('msub').textContent = [m.building ? 'Budova ' + m.building : '', m.place, m.typeName].filter(Boolean).join(' · ');
   $('mlast').textContent = lastInfo(m) + (m.last ? ' (stav ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ')' : '');
+  const pl = $('mplace'); pl.textContent = m.placeHelp ? '📍 ' + m.placeHelp : ''; pl.classList.toggle('hide', !m.placeHelp);
   show('meter');
 }
 $('mshot').onclick = () => openCamera();
@@ -433,6 +442,7 @@ async function openCamera() {
   const hint = $('hint'); hint.textContent = 'Fotíš: ' + current.name + (current.place ? ' (' + current.place + ')' : '');
   const sm = document.createElement('small'); sm.textContent = lastInfo(current) + (current.last ? ' (stav ' + fmtNum(current.last.value) + ')' : ''); hint.appendChild(sm);
   // foťák se ukáže hned s kolečkem, obraz naběhne, až bude hotový
+  const vh = $('vfhelp'); vh.textContent = current.shootHelp || ''; vh.classList.toggle('hide', !current.shootHelp);
   $('vf').classList.remove('hide'); $('vfspin').classList.remove('hide');
   torchOK = false; camProbed = false; $('torch').classList.add('na'); $('torch').disabled = false; paintTorch(false);
   try {
@@ -518,11 +528,12 @@ async function afterShot(cv) {
   $('dlast').textContent = current.last ? lastInfo(current) + ' (stav ' + fmtNum(current.last.value) + ' ' + (current.unit || '') + ')' : 'Zatím bez předchozího odečtu';
   $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide');
   $('dval').value = ''; $('dnote').value = ''; source = 'ručně'; aiValue = null; aiFailed = false;
+  $('dlabel').textContent = 'Stav měřidla · ' + decText(decOf(current));
   $('dstatus').innerHTML = '<span class="spin sm"></span>Čtu stav z fotky…';
   const fail = () => { aiFailed = true; $('dstatus').textContent = 'Data se nepodařilo vyčíst. Zadej hodnotu ručně, nebo odešli jen fotku.'; };
   try {
     const r = await post({ token: token(), action: 'read', id: current.id, photo: photoB64 });
-    if (r.ok) { aiValue = Number(r.value); $('dval').value = fmtNum(r.value); source = 'AI'; $('dstatus').textContent = 'Přečteno z fotky. Zkontroluj číslo podle fotky.'; }
+    if (r.ok) { aiValue = roundTo(Number(r.value), decOf(current)); $('dval').value = fmtNum(aiValue); source = 'AI'; $('dstatus').textContent = 'Přečteno z fotky. Zkontroluj číslo podle fotky.'; }
     else fail();
   } catch (e) { fail(); }
 }
@@ -544,7 +555,7 @@ async function sendBody(body, btn, onOk) {
   } finally { btn.disabled = false; }
 }
 $('dsend').onclick = () => {
-  const value = parseNum($('dval').value);
+  const value = roundTo(parseNum($('dval').value), decOf(current));
   if (!isFinite(value) || $('dval').value.trim() === '') return toast('Zadej stav měřidla, nebo odešli jen fotku.');
   if (current.last && value < current.last.value && !confirm('Zadaný stav (' + fmtNum(value) + ') je nižší než minule (' + fmtNum(current.last.value) + '). Opravdu odeslat?')) return;
   const src = aiValue !== null ? (Math.abs(value - aiValue) < 1e-9 ? 'AI' : 'AI, opraveno ručně') : 'ručně';
