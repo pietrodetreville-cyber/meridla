@@ -149,7 +149,7 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div class="card">
     <div class="mhead"><span class="ico" id="micon"></span><div><strong id="mname"></strong><div class="note" id="msub"></div></div></div>
     <div class="note" id="mlast" style="margin:10px 0"></div>
-    <div class="row"><button id="mshot" type="button">📷 Vyfotit odečet</button></div>
+    <div class="row"><button id="mshot" type="button">📷 Vyfotit měřidlo</button></div>
     <div class="row"><button class="sec" id="mhist" type="button">📊 Detail měření</button></div>
     <div class="row"><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
   </div>
@@ -192,7 +192,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.11.0';
+const VERSION = '1.11.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
