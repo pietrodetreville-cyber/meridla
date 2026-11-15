@@ -246,7 +246,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.18.0';
+const VERSION = '1.19.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -741,6 +741,14 @@ $('theme').onclick = () => {
 // ================= verze a aktualizace =================
 { const u = lsGet('meridla.updatedTo'); if (u) { lsSet('meridla.updatedTo', ''); if (u === VERSION) setTimeout(() => toast('Aktualizováno na verzi ' + VERSION + ' ✓', 4000), 2600); } }
 $('ver').textContent = 'verze ' + VERSION + (ENV === 'test' ? ' · TEST' : '');
+// číslo verze skriptu v Googlu (ověření, že běží správný kód); starší skript číslo nezná
+(async () => {
+  if (!ENDPOINT) return;
+  try {
+    const j = await (await fetch(ENDPOINT + '?action=version', { redirect: 'follow' })).json();
+    $('ver').textContent = 'verze ' + VERSION + (ENV === 'test' ? ' · TEST' : '') + (j && j.version ? ' · skript ' + j.version : ' · skript starší');
+  } catch (e) {}
+})();
 if (ENV === 'test') { $('envbar').classList.remove('hide'); document.title = 'TEST · ' + document.title; }
 function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Ahoj, ' + w + ' 👋' : 'Ahoj 👋'; }
 showWho();
