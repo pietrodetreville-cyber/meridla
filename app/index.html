@@ -220,7 +220,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.15.3';
+const VERSION = '1.16.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -282,18 +282,22 @@ const isDue = m => m.due !== undefined ? m.due : !m.doneThisWeek;
 const plural = (n, a, b, c) => n === 1 ? a : n >= 2 && n <= 4 ? b : c;
 const days = n => n + ' ' + plural(n, 'den', 'dny', 'dní');
 const bOf = m => m.building || 'Ostatní';
+// vztahy mezi budovami: kotelna je součástí budovy 271 (údaj přichází z tabulky)
+const parentOf = b => { const m = meters.find(x => bOf(x) === b && x.parent); return m ? m.parent : ''; };
+const inB = (m, b) => bOf(m) === b || m.parent === b;
+const bLabel = b => /^\d+$/.test(b) ? 'Budova ' + b : (parentOf(b) ? b + ' (součást budovy ' + parentOf(b) + ')' : b);
 let building = lsGet('meridla.building') || '';
 function buildingList() {
-  const set = []; meters.forEach(m => { const b = bOf(m); if (!set.includes(b)) set.push(b); });
+  const set = []; meters.forEach(m => { for (const b of [bOf(m), m.parent]) if (b && !set.includes(b)) set.push(b); });
   const num = b => /^\d+$/.test(b);
   return set.sort((a, b) => num(a) && num(b) ? a - b : num(a) ? -1 : num(b) ? 1 : a.localeCompare(b, 'cs'));
 }
 // ---- hledání s našeptávačem ----
 const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 let query = '';
-const hay = m => norm([m.name, idLabel(m), m.typeName, m.building ? 'budova ' + m.building : '', m.place, m.unit, m.last && m.last.who].filter(Boolean).join(' '));
+const hay = m => norm([m.name, idLabel(m), m.typeName, m.building ? 'budova ' + m.building : '', m.parent ? 'budova ' + m.parent + ' součást ' + m.parent : '', m.place, m.unit, m.last && m.last.who].filter(Boolean).join(' '));
 const textMatch = m => { const t = norm(query).split(/\s+/).filter(Boolean); if (!t.length) return true; const x = hay(m); return t.every(w => x.includes(w)); };
-const inBuilding = () => building ? meters.filter(m => bOf(m) === building) : meters;
+const inBuilding = () => building ? meters.filter(m => inB(m, building)) : meters;
 const visible = () => inBuilding().filter(textMatch);
 const badgeN = list => list.filter(isDue).length;
 function setBuilding(b) { building = b || ''; lsSet('meridla.building', building); query = ''; $('q').value = ''; hideSugg(); renderAll(); }
@@ -302,7 +306,7 @@ function renderSearchBar() {
   if (building && !bs.includes(building)) building = '';
   $('sbar').classList.toggle('hide', !meters.length);
   const pill = $('bpill');
-  pill.classList.toggle('hide', !building); pill.textContent = building ? 'Budova ' + building + ' ✕' : '';
+  pill.classList.toggle('hide', !building); pill.textContent = building ? bLabel(building) + ' ✕' : '';
   $('qclear').classList.toggle('hide', !query);
 }
 function hideSugg() { $('sugg').classList.add('hide'); }
@@ -312,7 +316,7 @@ function renderSugg() {
   const bs = buildingList().filter(x => !qn || qn.split(/\s+/).every(w => norm('budova ' + x).includes(w)));
   let ms = inBuilding().filter(textMatch).sort((x, y) => (isDue(y) - isDue(x)) || ((y.overdueDays || 0) - (x.overdueDays || 0)));
   let html = '';
-  if (!building && bs.length > 1 || (!building && bs.length === 1 && qn)) html += '<h4>Budovy</h4>' + bs.map(x => { const l = meters.filter(m => bOf(m) === x), n = badgeN(l); return '<button data-b="' + esc(x).replace(/"/g, '') + '"><span class="si">🏢</span><span class="st"><b>Budova ' + esc(x) + '</b><span>' + l.length + ' ' + plural(l.length, 'měřidlo', 'měřidla', 'měřidel') + (n ? ' · k odečtu: ' + n : ' · vše hotovo') + '</span></span></button>'; }).join('');
+  if (!building && bs.length > 1 || (!building && bs.length === 1 && qn)) html += '<h4>Budovy</h4>' + bs.map(x => { const l = meters.filter(m => inB(m, x)), n = badgeN(l), kids = bs.filter(y => parentOf(y) === x); return '<button data-b="' + esc(x).replace(/"/g, '') + '"><span class="si">🏢</span><span class="st"><b>' + esc(bLabel(x)) + '</b><span>' + l.length + ' ' + plural(l.length, 'měřidlo', 'měřidla', 'měřidel') + (kids.length ? ' (včetně: ' + esc(kids.join(', ').toLowerCase()) + ')' : '') + (n ? ' · k odečtu: ' + n : ' · vše hotovo') + '</span></span></button>'; }).join('');
   if (!qn) ms = ms.filter(isDue);
   if (ms.length) html += '<h4>' + (qn ? 'Měřidla' : 'K odečtu') + '</h4>' + ms.slice(0, 8).map(m => '<button data-m="' + esc(m.id) + '"><span class="si">' + iconFor(m) + '</span><span class="st"><b>' + (m.building ? esc(m.building) + ' · ' : '') + esc(m.name) + '</b><span>' + [m.place, statusLine(m)].filter(Boolean).map(esc).join(' · ') + '</span></span></button>').join('');
   else if (qn) html += '<div class="none">Nic nenalezeno.</div>';
@@ -332,7 +336,7 @@ document.addEventListener('pointerdown', e => { if (!e.target.closest('#sbar')) 
 $('q').addEventListener('keydown', e => { if (e.key === 'Escape') { hideSugg(); $('q').blur(); } });
 function renderProgress() {
   const list = inBuilding(), total = list.length, due = list.filter(isDue).length, done = total - due;
-  $('progress').textContent = !total ? 'Zatím žádná měřidla' : !due ? (building ? 'Budova ' + building + ': vše hotovo 🎉' : 'Vše je hotovo 🎉') : 'K odečtu: ' + due + ' z ' + total;
+  $('progress').textContent = !total ? 'Zatím žádná měřidla' : !due ? (building ? bLabel(building) + ': vše hotovo 🎉' : 'Vše je hotovo 🎉') : 'K odečtu: ' + due + ' z ' + total;
   $('barfill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
 }
 function chipFor(m) {
@@ -347,7 +351,7 @@ function renderAll(noAnim) {
   const list = visible().slice().sort((a, b) => (isDue(b) - isDue(a)) || ((b.overdueDays || 0) - (a.overdueDays || 0)));
   if (!list.length && meters.length) { $('list').innerHTML = '<p class="note" style="text-align:center;padding:18px 0">Žádné měřidlo neodpovídá hledání.</p>'; return; }
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
-    '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + ' <span class="mid">– ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
+    '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + ((!building || bOf(m) !== building) && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + ' <span class="mid">– ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
     (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
 }
@@ -411,7 +415,7 @@ function show(name) {
 function openMeter(m) {
   current = m;
   $('micon').textContent = iconFor(m); $('mname').textContent = m.name + ' · ' + idLabel(m);
-  $('msub').textContent = [m.building ? 'Budova ' + m.building : '', m.place, m.typeName].filter(Boolean).join(' · ');
+  $('msub').textContent = [m.building ? bLabel(m.building) : '', m.place, m.typeName].filter(Boolean).join(' · ');
   $('mlast').textContent = lastInfo(m) + (m.last ? ' (stav ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ')' : '');
   // box s popisem místa: když je k měřidlu fotka / plánek, je celý tlačítkem, které ji otevře
   const pl = $('mplace'); pl.textContent = '';

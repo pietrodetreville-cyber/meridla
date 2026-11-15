@@ -13,6 +13,7 @@ const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
 const SHEET_TYPES = 'Typy';
 const SHEET_ALERTS = 'Upozornění';
+const SHEET_BUILDINGS = 'Budovy';
 const FOLDER_NAME = 'Odečty měřidel – fotky';
 const DEFAULT_APP_URL = 'https://pietrodetreville-cyber.github.io/meridla/app/';
 
@@ -31,6 +32,14 @@ function setup() {
     ty.appendRow(['Plynoměr', 'm³', 'kolečka', 5, 'Přečti černá kolečka (celé m³). Červená kolečka vpravo jsou desetiny, ty ignoruj.', 7, '🔥']);
     ty.appendRow(['Kalorimetr', 'GJ', 'digitální', 5, 'Přečti celkovou naměřenou energii (spotřebu tepla) v jednotce uvedené na displeji. Ignoruj teploty, průtok, objem a výkon.', 7, '🌡️']);
     ty.setFrozenRows(1);
+  }
+  // budovy: vztah "je součástí" (např. kotelna je součástí budovy 271)
+  let bd = ss.getSheetByName(SHEET_BUILDINGS);
+  if (!bd) {
+    bd = ss.insertSheet(SHEET_BUILDINGS);
+    bd.appendRow(['Budova', 'Součást budovy', 'Popis']);
+    bd.appendRow(['Kotelna', '271', 'Kotelna je součástí budovy 271']);
+    bd.setFrozenRows(1);
   }
   // upozornění e-mailem, když není dodržen interval
   let al = ss.getSheetByName(SHEET_ALERTS);
@@ -184,6 +193,17 @@ function fillIds_() {
 }
 
 // měřidla: vlastnosti z listu Měřidla, doplněné výchozími hodnotami podle typu z listu Typy
+// vztahy mezi budovami z listu Budovy (výchozí: kotelna je součástí budovy 271)
+function buildings_() {
+  const out = { kotelna: { name: 'Kotelna', parent: '271' } };
+  const t = table_(SHEET_BUILDINGS);
+  if (t) t.rows.forEach(r => {
+    const n = String(r.v['budova'] || '').trim();
+    if (n) out[n.toLowerCase()] = { name: n, parent: String(r.v['součást budovy'] || '').trim() };
+  });
+  return out;
+}
+
 function findKey_(v, re) { return Object.keys(v).find(k => re.test(k)); }
 
 function round_(x, d) { const f = Math.pow(10, d); return Math.round(x * f) / f; }
@@ -194,7 +214,7 @@ function meters_() {
   if (tt) tt.rows.forEach(r => { const k = String(r.v['typ'] || '').trim().toLowerCase(); if (k) types[k] = r.v; });
   const mt = table_(SHEET_METERS);
   const num = x => Number(x) > 0 ? Math.round(Number(x)) : 0;
-  const seen = {};
+  const seen = {}, B = buildings_();
   return mt.rows.filter(r => String(r.v['id'] || '').trim()).map(r => {
     const v = r.v, typeName = String(v['typ'] || '').trim(), t = types[typeName.toLowerCase()] || {};
     // stejné id u dvou měřidel by slilo jejich historii: druhé a další dostane příponu
@@ -204,6 +224,8 @@ function meters_() {
     const dec = (dr !== '' && dr !== null && isFinite(Number(dr)) && Number(dr) >= 0 && Number(dr) <= 4) ? Math.round(Number(dr)) : 1;
     const pk = findKey_(v, /^nápověda[_ ]místo/), fk = findKey_(v, /^nápověda[_ ]focení/);
     const bRaw = String(v['budova'] || '').trim();
+    const bName = bRaw ? bRaw.charAt(0).toUpperCase() + bRaw.slice(1) : '';
+    const parent = bName && B[bName.toLowerCase()] ? B[bName.toLowerCase()].parent : '';
     return {
       id: id,
       name: String(v['název'] || typeName).trim(),
@@ -212,7 +234,9 @@ function meters_() {
       digits: v['číslic před čárkou'] || t['číslic před čárkou'] || '',
       hint: String(v['nápověda pro čtení'] || t['nápověda pro čtení'] || ''),
       unit: String(v['jednotka'] || t['jednotka'] || ''),
-      building: bRaw ? bRaw.charAt(0).toUpperCase() + bRaw.slice(1) : '',
+      building: bName,
+      parent: parent,
+      buildingLabel: parent ? bName + ' (budova ' + parent + ')' : bName,
       place: String(v['umístění'] || '').trim(),
       placeHelp: pk ? String(v[pk] || '').trim() : '',
       shootHelp: fk ? String(v[fk] || '').trim() : '',
@@ -377,7 +401,7 @@ function doPost(e) {
     const to = props_().getProperty('NOTIFY');
     if (to) {
       MailApp.sendEmail(to, 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
-        (meter.building ? 'Budova: ' + meter.building + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
+        (meter.buildingLabel ? 'Budova: ' + meter.buildingLabel + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }
@@ -419,7 +443,7 @@ function sendMissingMail_(meter, who, rid, blob, aiFailed) {
   const to = missingRecipients_().join(',');
   if (!to) return;
   const url = formUrl_(rid);
-  const title = (meter.building ? meter.building + ': ' : '') + meter.name + (meter.place ? ' (' + meter.place + ')' : '');
+  const title = (meter.buildingLabel ? meter.buildingLabel + ': ' : '') + meter.name + (meter.place ? ' (' + meter.place + ')' : '');
   const html = '<div style="font-family:Arial,sans-serif;max-width:560px"><h3 style="margin:0 0 8px">Chybí hodnota měřidla</h3>' +
     '<p style="margin:0 0 10px"><b>' + esc_(title) + '</b><br>Fotil(a): ' + esc_(who) + (aiFailed ? '<br>Čtení z fotky (OCR) se nepodařilo.' : '') + '</p>' +
     (blob ? '<p><img src="cid:foto" style="max-width:100%;border-radius:8px"></p>' : '') +
@@ -571,7 +595,7 @@ function reminder() {
     const di = dueInfo_(m, last);
     if (!di.due) return;
     rules.forEach((r, ri) => {
-      if (r.building && r.building !== m.building) return;
+      if (r.building && r.building.toLowerCase() !== String(m.building).toLowerCase() && r.building.toLowerCase() !== String(m.parent).toLowerCase()) return;
       if (last ? di.overdueDays < r.after : r.after > 0) return;
       const key = ri + '|' + m.id + '|' + (last ? last.time.toISOString() : 'none');
       if (sent[key]) { next[key] = sent[key]; return; }
@@ -581,7 +605,7 @@ function reminder() {
   const base = props.getProperty('APP_URL') || DEFAULT_APP_URL;
   Object.keys(out).forEach(ri => {
     const items = out[ri].sort((x, y) => String(x.m.building).localeCompare(String(y.m.building), 'cs') || String(x.m.name).localeCompare(String(y.m.name), 'cs'));
-    const lines = items.map(it => '- ' + (it.m.building ? it.m.building + ': ' : '') + it.m.name + (it.m.place ? ' (' + it.m.place + ')' : '') + ' – ' +
+    const lines = items.map(it => '- ' + (it.m.buildingLabel ? it.m.buildingLabel + ': ' : '') + it.m.name + (it.m.place ? ' (' + it.m.place + ')' : '') + ' – ' +
       (it.last ? (it.di.overdueDays ? 'po termínu ' + it.di.overdueDays + ' d' : 'termín je dnes') + ', naposledy ' + Utilities.formatDate(it.last.time, tz, 'd. M. yyyy') + (it.last.who ? ' (' + it.last.who + ')' : '') : 'zatím bez odečtu'));
     try {
       MailApp.sendEmail({
