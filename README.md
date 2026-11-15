@@ -26,3 +26,15 @@ Testovací appka nikdy nesahá do ostré tabulky: bez adresy testovacího skript
 3. Spustit `setup`, potom `resetToken` (zapsat si nový tajný kód) a Implementovat → Nové nasazení → Webová aplikace (Spustit jako: já, Přístup: kdokoli).
 4. Adresu `…/exec` vložit do `app/index.html` do `ENDPOINTS.test` (větev `test`).
 5. Odkaz pro testování: `https://pietrodetreville-cyber.github.io/meridla/test/app/#k=TESTOVACÍ_KÓD`.
+
+## Uspořádání na Google Disku
+
+```
+SVJ_app/
+  OSTRE/        tabulka mereni_SVJ, Fotodokumentace odečtů, Místa měřidel – plánky a fotky
+  TESTOVACI/    tabulka mereni_SVJ_TEST, Fotodokumentace odečtů, Místa měřidel – plánky a fotky
+```
+
+Soubory a složky se uspořádají jedním spuštěním (menu tabulky **Měřidla → Uspořádat Disk (SVJ_app)**, nebo funkce `organizeDrive`).
+Testovací kopie skriptu musí mít předtím ve vlastnostech skriptu `ENV` = `test`, aby se její složky založily v podsložce `TESTOVACI`.
+Přesun nic nerozbije: odkazy a identifikátory souborů zůstávají stejné.

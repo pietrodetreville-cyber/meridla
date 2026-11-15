@@ -14,7 +14,9 @@ const SHEET_PEOPLE = 'Lidé';
 const SHEET_TYPES = 'Typy';
 const SHEET_ALERTS = 'Upozornění';
 const SHEET_BUILDINGS = 'Budovy';
-const FOLDER_NAME = 'Odečty měřidel – fotky';
+const FOLDER_NAME = 'Fotodokumentace odečtů';
+const PLACES_NAME = 'Místa měřidel – plánky a fotky';
+const DRIVE_ROOT = 'SVJ_app';
 const DEFAULT_APP_URL = 'https://pietrodetreville-cyber.github.io/meridla/app/';
 
 // ---------- jednorázové nastavení ----------
@@ -70,7 +72,7 @@ function setup() {
   }
 
   // složka pro plánky a fotky míst (do ní se obrázky vkládají, v tabulce se uvede název souboru)
-  if (!props.getProperty('PLACES_FOLDER_ID')) props.setProperty('PLACES_FOLDER_ID', DriveApp.createFolder('Místa měřidel – plánky a fotky').getId());
+  if (!props.getProperty('PLACES_FOLDER_ID')) props.setProperty('PLACES_FOLDER_ID', driveRoot_().createFolder(PLACES_NAME).getId());
   const mHead = m.getRange(1, 1, 1, Math.max(1, m.getLastColumn())).getValues()[0];
   if (!mHead.some(x => /^(fotka|plánek)[_ ]?místa/i.test(String(x).trim()))) {
     let c = mHead.findIndex(x => String(x).trim() === '');
@@ -94,7 +96,7 @@ function setup() {
     al.getRange(1, 5).setValue('Chybí hodnota');
     if (al.getLastRow() >= 2 && String(al.getRange(2, 1).getValue()).indexOf('@') > 0) al.getRange(2, 5).setValue('ano');
   }
-  if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', DriveApp.createFolder(FOLDER_NAME).getId());
+  if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', driveRoot_().createFolder(FOLDER_NAME).getId());
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', Utilities.getUuid().replace(/-/g, ''));
   if (!props.getProperty('NOTIFY')) props.setProperty('NOTIFY', Session.getEffectiveUser().getEmail());
 
@@ -104,7 +106,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -549,6 +551,31 @@ function placeImage_(ref) {
   } catch (e) {
     return { ok: false, error: 'fail' };
   }
+}
+
+// ---------- uspořádání Disku: SVJ_app / OSTRE nebo TESTOVACI ----------
+// Ostrá i testovací verze mají každá svou podsložku; testovací kopie skriptu má ve vlastnostech ENV = test.
+function child_(parent, name) {
+  const it = parent.getFoldersByName(name);
+  return it.hasNext() ? it.next() : parent.createFolder(name);
+}
+function driveRoot_() {
+  const env = props_().getProperty('ENV') === 'test' ? 'TESTOVACI' : 'OSTRE';
+  return child_(child_(DriveApp.getRootFolder(), DRIVE_ROOT), env);
+}
+
+// Přesune do složky tabulku a složky s fotkami (odkazy, id a nastavení zůstávají v platnosti).
+function organizeDrive() {
+  const dest = driveRoot_(), p = props_(), done = [];
+  const mv = (file, label) => { try { if (file.getParents().hasNext() && file.getParents().next().getId() === dest.getId()) { done.push(label + ': už je na místě'); return; } file.moveTo(dest); done.push(label + ': přesunuto'); } catch (e) { done.push(label + ': NEPODAŘILO SE (' + e.message + ')'); } };
+  mv(DriveApp.getFileById(SpreadsheetApp.getActive().getId()), 'Tabulka');
+  const f1 = p.getProperty('FOLDER_ID');
+  if (f1) { try { const fo = DriveApp.getFolderById(f1); if (fo.getName() === 'Odečty měřidel – fotky') fo.setName(FOLDER_NAME); mv(fo, 'Fotodokumentace odečtů'); } catch (e) { done.push('Fotodokumentace: NEPODAŘILO SE (' + e.message + ')'); } }
+  const f2 = p.getProperty('PLACES_FOLDER_ID');
+  if (f2) { try { mv(DriveApp.getFolderById(f2), 'Místa měřidel'); } catch (e) { done.push('Místa měřidel: NEPODAŘILO SE (' + e.message + ')'); } }
+  const text = 'Složka: ' + DRIVE_ROOT + ' / ' + dest.getName() + String.fromCharCode(10) + dest.getUrl() + String.fromCharCode(10) + String.fromCharCode(10) + done.join(String.fromCharCode(10));
+  Logger.log(text);
+  try { SpreadsheetApp.getUi().alert(text); } catch (e) {}
 }
 
 // kontrola listu Měřidla: duplicitní id, neznámý typ, chybějící budova
