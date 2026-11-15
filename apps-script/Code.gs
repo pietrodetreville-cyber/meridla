@@ -577,7 +577,7 @@ function organizeDrive() {
   if (f2) { try { mv(DriveApp.getFolderById(f2), 'Místa měřidel'); } catch (e) { done.push('Místa měřidel: NEPODAŘILO SE (' + e.message + ')'); } }
   const text = 'Složka: ' + DRIVE_ROOT + ' / ' + dest.getName() + String.fromCharCode(10) + dest.getUrl() + String.fromCharCode(10) + String.fromCharCode(10) + done.join(String.fromCharCode(10));
   Logger.log(text);
-  try { SpreadsheetApp.getUi().alert(text); } catch (e) {}
+  try { SpreadsheetApp.getActive().toast(text.replace(/s+/g, ' ').slice(0, 280), 'Hotovo (podrobnosti v Protokolu spuštění)', 25); } catch (e) {}
 }
 
 // ---------- testovací sada ----------
@@ -597,7 +597,7 @@ function createTestSet() {
     (made ? 'Vytvořena kopie tabulky: ' : 'Kopie tabulky už existovala: ') + copyName + nl + copy.getUrl() + nl + nl +
     'Dál (v kopii): Rozšíření → Apps Script → Vlastnosti skriptu: ENV = test (a GEMINI_KEY, NOTIFY), potom spustit setup, clearTestData a resetToken.';
   Logger.log(text);
-  try { SpreadsheetApp.getUi().alert(text); } catch (e) {}
+  try { SpreadsheetApp.getActive().toast(text.replace(/s+/g, ' ').slice(0, 280), 'Hotovo (podrobnosti v Protokolu spuštění)', 25); } catch (e) {}
 }
 
 // Spouští se v TESTOVACÍM skriptu (ENV = test): smaže zkopírované odečty a tajné kódy z ostré tabulky.
@@ -611,7 +611,7 @@ function clearTestData() {
   if (p && p.getLastRow() > 1) { p.getRange(2, 2, p.getLastRow() - 1, 2).clearContent(); out.push('Lidé: smazány zkopírované tajné kódy a odkazy (vygeneruješ nové)'); }
   props_().deleteProperty('NOTIF');
   Logger.log(out.join(String.fromCharCode(10)) + String.fromCharCode(10) + 'Teď spusť resetToken a vygeneruj odkazy (menu Měřidla).');
-  try { SpreadsheetApp.getUi().alert(out.join(String.fromCharCode(10)) + String.fromCharCode(10) + String.fromCharCode(10) + 'Teď spusť resetToken.'); } catch (e) {}
+  try { SpreadsheetApp.getActive().toast(out.join(' · ') + ' · Teď spusť resetToken.', 'Hotovo', 25); } catch (e) {}
 }
 
 // kontrola listu Měřidla: duplicitní id, neznámý typ, chybějící budova
