@@ -49,11 +49,9 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
-.callout.link{cursor:pointer;border-color:#2563eb88;background:#2563eb1c}
+.callout.link{display:flex;align-items:center;gap:10px;cursor:pointer;border-color:#2563eb99;background:#2563eb1c;font-weight:600}
+.callout.link::after{content:"›";margin-left:auto;font-size:1.7rem;line-height:1;color:var(--acc);font-weight:700}
 .callout.link:active{background:#2563eb33}
-.callout .more{display:block;margin-top:4px;font-weight:700;color:var(--acc);font-size:.85rem}
-#vfplace{position:absolute;right:16px;top:calc(env(safe-area-inset-top) + 74px);z-index:3;padding:9px 14px;font-size:.9rem;background:#0009;border:1px solid #fff8;color:#fff;backdrop-filter:blur(6px)}
-#vfplace.hide{display:none}
 #lbstat{position:absolute;color:#fff;font-weight:600;text-align:center;padding:20px}
 #lbstat .spin{display:block;margin:0 auto 12px}
 #lb{position:fixed;inset:0;z-index:60;background:#000e;display:flex;align-items:center;justify-content:center;padding:10px}
@@ -211,7 +209,6 @@ html:has(#splash:not(.out)){overflow:hidden}
   <video id="video" playsinline muted></video>
   <div id="frame"></div>
   <div id="vfspin"><div class="spin"></div><span>Spouštím foťák…</span></div>
-  <button id="vfplace" class="hide" type="button">📍 Místo</button>
   <div id="hint"></div>
   <div id="vfhelp" class="hide"></div>
   <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec" id="torch" type="button">💡 Baterka</button><button id="shot" type="button">Vyfotit</button></div>
@@ -223,7 +220,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.15.2';
+const VERSION = '1.15.3';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -404,7 +401,6 @@ async function showPlace(m) {
 }
 $('lb').onclick = () => $('lb').classList.add('hide');
 $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(current); };
-$('vfplace').onclick = () => showPlace(current);
 
 // ================= obrazovky =================
 function show(name) {
@@ -417,12 +413,15 @@ function openMeter(m) {
   $('micon').textContent = iconFor(m); $('mname').textContent = m.name + ' · ' + idLabel(m);
   $('msub').textContent = [m.building ? 'Budova ' + m.building : '', m.place, m.typeName].filter(Boolean).join(' · ');
   $('mlast').textContent = lastInfo(m) + (m.last ? ' (stav ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ')' : '');
+  // box s popisem místa: když je k měřidlu fotka / plánek, je celý tlačítkem, které ji otevře
   const pl = $('mplace'); pl.textContent = '';
   if (m.placeHelp || m.placePhoto) {
-    pl.append('📍 ' + (m.placeHelp || 'Místo měřidla'));
-    if (m.placePhoto) { const more = document.createElement('span'); more.className = 'more'; more.textContent = 'Zobrazit fotku / plánek místa ›'; pl.append(more); getPlace(m).catch(() => {}); }
+    pl.textContent = '📍 ' + (m.placeHelp || 'Místo měřidla');
+    if (m.placePhoto) getPlace(m).catch(() => {});
   }
   pl.classList.toggle('hide', !(m.placeHelp || m.placePhoto)); pl.classList.toggle('link', !!m.placePhoto);
+  if (m.placePhoto) { pl.setAttribute('role', 'button'); pl.setAttribute('tabindex', '0'); pl.setAttribute('aria-label', 'Zobrazit fotku místa: ' + (m.placeHelp || m.name)); }
+  else { pl.removeAttribute('role'); pl.removeAttribute('tabindex'); pl.removeAttribute('aria-label'); }
   show('meter');
 }
 $('mshot').onclick = () => openCamera();
@@ -495,8 +494,6 @@ async function openCamera() {
   const sm = document.createElement('small'); sm.textContent = lastInfo(current) + (current.last ? ' (stav ' + fmtNum(current.last.value) + ')' : ''); hint.appendChild(sm);
   // foťák se ukáže hned s kolečkem, obraz naběhne, až bude hotový
   const vh = $('vfhelp'); vh.textContent = current.shootHelp || ''; vh.classList.toggle('hide', !current.shootHelp);
-  $('vfplace').classList.toggle('hide', !current.placePhoto);
-  if (current.placePhoto) getPlace(current).catch(() => {});
   $('vf').classList.remove('hide'); $('vfspin').classList.remove('hide');
   torchOK = false; camProbed = false; $('torch').classList.add('na'); $('torch').disabled = false; paintTorch(false);
   try {
