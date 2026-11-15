@@ -49,7 +49,8 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
-.mid{display:inline-block;white-space:nowrap;font-weight:500;font-size:.72rem;color:var(--mut)}
+.meter .s.lastrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:3px}
+.mid{display:inline-block;white-space:nowrap;font-weight:500;font-size:.78rem;color:var(--mut)}
 .callout{background:#2563eb14;border:1px solid #2563eb44;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.92rem;line-height:1.35}
 #vfhelp{position:absolute;left:16px;right:16px;top:calc(42% + 28vw + 16px);z-index:3;color:#fff;font-size:.95rem;line-height:1.4;text-align:center;background:#0008;border-radius:12px;padding:10px 12px}
 #vfhelp.hide{display:none}
@@ -103,7 +104,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 .sugg .st{flex:1;min-width:0}.sugg .st b{display:block;font-size:.95rem}.sugg .st span{display:block;font-size:.78rem;color:var(--mut);font-weight:500}
 .noanim .meter{animation:none}
 .sugg .none{padding:12px 10px;color:var(--mut);font-size:.9rem}
-.tag{display:inline-block;font-size:.68rem;font-weight:800;padding:1px 6px;margin-right:4px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
+.tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 6px;margin-right:4px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
 .chip.late{background:var(--warn);color:#fff}
 .hero{position:relative;border-radius:14px;padding:10px 14px 11px;margin:6px 0 12px;color:var(--fg);background:var(--card);border:1px solid var(--line);border-left:4px solid var(--acc);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .hero .hi{font-size:.8rem;font-weight:600;color:var(--mut)}
@@ -210,7 +211,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.14.3';
+const VERSION = '1.14.4';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -329,7 +330,7 @@ function chipFor(m) {
   if (m.pending) return '<span class="chip todo">čeká na hodnotu</span>';
   if (!isDue(m)) return '<span class="chip ok">✓ hotovo</span>';
   if (!m.last) return '<span class="chip todo">chybí</span>';
-  return m.overdueDays ? '<span class="chip late">po termínu ' + m.overdueDays + ' d</span>' : '<span class="chip todo">je čas</span>';
+  return m.overdueDays ? '<span class="chip late">po termínu ' + days(m.overdueDays) + '</span>' : '<span class="chip todo">je čas</span>';
 }
 function renderAll(noAnim) {
   $('list').classList.toggle('noanim', !!noAnim);
@@ -339,8 +340,7 @@ function renderAll(noAnim) {
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
     '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + ' <span class="mid">– ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
-    (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s">' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span></span>' +
-    chipFor(m) + '</button>').join('');
+    (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
 }
 async function loadList() {
   if (!token()) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Chybí tajný kód. Otevři appku přes odkaz, který ti poslali.</span>'; return; }
