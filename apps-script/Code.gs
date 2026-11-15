@@ -60,6 +60,14 @@ function setup() {
     r.setFrozenRows(1);
   }
 
+  // složka pro plánky a fotky míst (do ní se obrázky vkládají, v tabulce se uvede název souboru)
+  if (!props.getProperty('PLACES_FOLDER_ID')) props.setProperty('PLACES_FOLDER_ID', DriveApp.createFolder('Místa měřidel – plánky a fotky').getId());
+  const mHead = m.getRange(1, 1, 1, Math.max(1, m.getLastColumn())).getValues()[0];
+  if (!mHead.some(x => /^(fotka|plánek)[_ ]?místa/i.test(String(x).trim()))) {
+    let c = mHead.findIndex(x => String(x).trim() === '');
+    m.getRange(1, (c < 0 ? mHead.length : c) + 1).setValue('Fotka_místa');
+  }
+  Logger.log('Složka na plánky a fotky míst: ' + DriveApp.getFolderById(props.getProperty('PLACES_FOLDER_ID')).getUrl());
   // číslo měřidla jako id: vždy jako text (aby se neztratily nuly na začátku)
   r.getRange('B:B').setNumberFormat('@');
   m.getRange('A:A').setNumberFormat('@');
@@ -208,6 +216,7 @@ function meters_() {
       place: String(v['umístění'] || '').trim(),
       placeHelp: pk ? String(v[pk] || '').trim() : '',
       shootHelp: fk ? String(v[fk] || '').trim() : '',
+      placePhoto: (() => { const k = findKey_(v, /^(fotka|plánek|plan)[_ ]?(místa|mista)?/); return k ? String(v[k] || '').trim() : ''; })(),
       decimals: dec,
       icon: String(t['ikona'] || '').trim(),
       interval: num(v['interval (dny)'] || v['interval']) || num(t['výchozí interval (dny)']) || 7
@@ -252,6 +261,10 @@ function doGet(e) {
   if (e.parameter.action === 'history') {
     const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
     return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who })) });
+  }
+  if (e.parameter.action === 'place') {
+    const mm = meters_().find(x => x.id === e.parameter.id);
+    return ok_(mm && mm.placePhoto ? placeImage_(mm.placePhoto) : { ok: false, error: 'none' });
   }
   fillIds_();
   const all = readings_();
@@ -479,6 +492,36 @@ function submitValue(rid, key, value, name) {
     return { ok: true, value: v };
   } finally {
     lock.releaseLock();
+  }
+}
+
+// ---------- fotka / plánek místa měřidla ----------
+// V tabulce je název souboru ze složky Místa měřidel (nebo odkaz / id souboru na Disku).
+function resolvePlaceId_(ref) {
+  ref = String(ref || '').trim();
+  if (!ref) return '';
+  let m = ref.match(/\/d\/([A-Za-z0-9_-]{20,})/) || ref.match(/[?&]id=([A-Za-z0-9_-]{20,})/);
+  if (m) return m[1];
+  if (/^[A-Za-z0-9_-]{25,}$/.test(ref)) return ref;
+  const fid = props_().getProperty('PLACES_FOLDER_ID');
+  if (!fid) return '';
+  const it = DriveApp.getFolderById(fid).getFilesByName(ref);
+  return it.hasNext() ? it.next().getId() : '';
+}
+
+function placeImage_(ref) {
+  try {
+    const id = resolvePlaceId_(ref);
+    if (!id) return { ok: false, error: 'nofile' };
+    // zmenšený náhled z Disku (rychlý přenos); funguje i pro PDF plánky
+    const r = UrlFetchApp.fetch('https://drive.google.com/thumbnail?id=' + id + '&sz=w1100', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    let blob = null;
+    if (r.getResponseCode() === 200) blob = r.getBlob();
+    else { const b = DriveApp.getFileById(id).getBlob(); if (b.getBytes().length <= 1200000) blob = b; }
+    if (!blob) return { ok: false, error: 'big' };
+    return { ok: true, mime: blob.getContentType() || 'image/jpeg', data: Utilities.base64Encode(blob.getBytes()) };
+  } catch (e) {
+    return { ok: false, error: 'fail' };
   }
 }
 
