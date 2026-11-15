@@ -12,6 +12,7 @@ const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
 const SHEET_TYPES = 'Typy';
+const SHEET_ALERTS = 'Upozornění';
 const FOLDER_NAME = 'Odečty měřidel – fotky';
 const DEFAULT_APP_URL = 'https://pietrodetreville-cyber.github.io/meridla/app/';
 
@@ -30,6 +31,15 @@ function setup() {
     ty.appendRow(['Plynoměr', 'm³', 'kolečka', 5, 'Přečti černá kolečka (celé m³). Červená kolečka vpravo jsou desetiny, ty ignoruj.', 7, '🔥']);
     ty.appendRow(['Kalorimetr', 'GJ', 'digitální', 5, 'Přečti celkovou naměřenou energii (spotřebu tepla) v jednotce uvedené na displeji. Ignoruj teploty, průtok, objem a výkon.', 7, '🌡️']);
     ty.setFrozenRows(1);
+  }
+  // upozornění e-mailem, když není dodržen interval
+  let al = ss.getSheetByName(SHEET_ALERTS);
+  if (!al) {
+    al = ss.insertSheet(SHEET_ALERTS);
+    al.appendRow(['Komu', 'Budova', 'Dní po termínu', 'Poznámka']);
+    al.appendRow([props.getProperty('NOTIFY') || Session.getEffectiveUser().getEmail(), '', 0, 'správce: dostane upozornění v den termínu']);
+    al.appendRow(['', '', 3, 'sem doplňte e-mail výboru: upozornění po 3 dnech zpoždění']);
+    al.setFrozenRows(1);
   }
   // měřidla: u každého stačí vybrat typ a budovu; id se doplní samo
   let m = ss.getSheetByName(SHEET_METERS);
@@ -68,7 +78,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -326,19 +336,59 @@ function doPost(e) {
   }
 }
 
-// ---------- volitelné: týdenní připomínka ----------
-// Spusť installReminder() jednou; každý pátek v 9 h pošle e-mail, co tento týden chybí.
+// ---------- upozornění e-mailem, když není dodržen interval ----------
+// Pravidla jsou v listu Upozornění: Komu (e-mail, víc adres odděl čárkou), Budova (prázdné = všechny), Dní po termínu (0 = v den termínu).
+// Každé pravidlo upozorní na dané měřidlo jen jednou za jeden termín (po novém odečtu se začíná znovu).
 function installReminder() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'reminder').forEach(t => ScriptApp.deleteTrigger(t));
-  ScriptApp.newTrigger('reminder').timeBased().onWeekDay(ScriptApp.WeekDay.FRIDAY).atHour(9).create();
+  ScriptApp.newTrigger('reminder').timeBased().everyDays(1).atHour(8).create();
 }
+
+function rules_() {
+  const t = table_(SHEET_ALERTS);
+  if (!t) return [];
+  return t.rows.map(r => ({
+    to: String(r.v['komu'] || '').replace(/;/g, ',').split(',').map(x => x.trim()).filter(x => x.indexOf('@') > 0).join(','),
+    building: String(r.v['budova'] || '').trim(),
+    after: Math.max(0, Math.round(Number(r.v['dní po termínu']) || 0))
+  })).filter(r => r.to);
+}
+
 function reminder() {
-  const all = readings_(), lines = [];
+  const rules = rules_();
+  if (!rules.length) return;
+  const props = props_(), all = readings_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  let sent = {};
+  try { sent = JSON.parse(props.getProperty('NOTIF') || '{}'); } catch (e) {}
+  const next = {}, out = {};
   meters_().forEach(m => {
     const last = all.filter(x => x.id === m.id).sort((x, y) => y.time - x.time)[0];
     const di = dueInfo_(m, last);
-    if (di.due) lines.push((m.building ? m.building + ': ' : '') + m.name + (last ? (di.overdueDays ? ' (po termínu ' + di.overdueDays + ' d)' : ' (dnes je termín)') : ' (zatím bez odečtu)'));
+    if (!di.due) return;
+    rules.forEach((r, ri) => {
+      if (r.building && r.building !== m.building) return;
+      if (last ? di.overdueDays < r.after : r.after > 0) return;
+      const key = ri + '|' + m.id + '|' + (last ? last.time.toISOString() : 'none');
+      if (sent[key]) { next[key] = sent[key]; return; }
+      (out[ri] = out[ri] || []).push({ m: m, key: key, last: last, di: di });
+    });
   });
-  const to = props_().getProperty('NOTIFY');
-  if (lines.length && to) MailApp.sendEmail(to, 'Chybí odečty měřidel (' + lines.length + ')', 'K odečtu je:\n- ' + lines.join('\n- '));
+  const base = props.getProperty('APP_URL') || DEFAULT_APP_URL;
+  Object.keys(out).forEach(ri => {
+    const items = out[ri].sort((x, y) => String(x.m.building).localeCompare(String(y.m.building), 'cs') || String(x.m.name).localeCompare(String(y.m.name), 'cs'));
+    const lines = items.map(it => '- ' + (it.m.building ? it.m.building + ': ' : '') + it.m.name + (it.m.place ? ' (' + it.m.place + ')' : '') + ' – ' +
+      (it.last ? (it.di.overdueDays ? 'po termínu ' + it.di.overdueDays + ' d' : 'termín je dnes') + ', naposledy ' + Utilities.formatDate(it.last.time, tz, 'd. M. yyyy') + (it.last.who ? ' (' + it.last.who + ')' : '') : 'zatím bez odečtu'));
+    try {
+      MailApp.sendEmail({
+        to: rules[ri].to,
+        subject: 'Fotoapp SVJ: chybí odečty měřidel (' + items.length + ')',
+        body: 'Dobrý den,' + '\n\n' + 'u těchto měřidel nebyl dodržen interval odečtu:' + '\n\n' + lines.join('\n') + '\n\n' + 'Otevřít aplikaci: ' + base + '\n\n' + 'Tato zpráva se pro každé měřidlo posílá jen jednou za jeden termín.',
+        name: 'Fotoapp SVJ Od Vysoké'
+      });
+      items.forEach(it => { next[it.key] = new Date().toISOString(); });
+    } catch (e) {
+      Logger.log('E-mail se nepodařilo odeslat (' + rules[ri].to + '): ' + e.message);
+    }
+  });
+  props.setProperty('NOTIF', JSON.stringify(next));
 }
