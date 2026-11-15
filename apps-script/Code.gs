@@ -211,6 +211,10 @@ function weekStart_() {
 function doGet(e) {
   const who = who_(e.parameter.token);
   if (!who) return ok_({ ok: false, error: 'token' });
+  if (e.parameter.action === 'history') {
+    const rows = readings_().filter(x => x.id === e.parameter.id).sort((a, b) => a.time - b.time).slice(-800);
+    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who })) });
+  }
   fillIds_();
   const all = readings_();
   const list = meters_().map(m => {

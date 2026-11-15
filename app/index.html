@@ -46,6 +46,21 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.mhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.mhead strong{font-size:1.15rem}
+.seg{display:flex;gap:6px;margin:10px 0}
+.seg button{flex:1;padding:9px 4px;background:transparent;color:var(--fg);border:1px solid var(--line);font-weight:600}
+.seg button.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
+.tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:10px 0}
+.tiles div{background:#66728218;border-radius:12px;padding:9px 6px;text-align:center}
+.tiles b{display:block;font-size:1.05rem}
+.tiles span{font-size:.72rem;color:var(--mut)}
+#hbody svg{width:100%;height:auto;display:block}
+#hbody svg text{fill:var(--mut);font-size:9px}
+.hrow{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:.9rem}
+.hrow b{white-space:nowrap}
+.hrow .inc{color:var(--mut);font-size:.8rem}
+.hrow.neg .inc{color:var(--warn)}
 #splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:radial-gradient(700px 480px at 50% 35%,var(--glow1),transparent 65%),var(--bg);transition:opacity .6s ease,visibility .6s}
 #splash.out{opacity:0;visibility:hidden}
 html:has(#splash:not(.out)){overflow:hidden}
@@ -113,6 +128,25 @@ html:has(#splash:not(.out)){overflow:hidden}
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
 </section>
 
+<section id="meter" class="hide">
+  <div class="card">
+    <div class="mhead"><span class="ico" id="micon"></span><div><strong id="mname"></strong><div class="note" id="msub"></div></div></div>
+    <div class="note" id="mlast" style="margin:10px 0"></div>
+    <div class="row"><button id="mshot" type="button">📷 Vyfotit odečet</button></div>
+    <div class="row"><button class="sec" id="mhist" type="button">📊 Detail měření</button></div>
+    <div class="row"><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
+  </div>
+</section>
+
+<section id="hist" class="hide">
+  <div class="card">
+    <strong id="hname"></strong>
+    <div class="seg" id="hrange"><button data-r="week" class="on" type="button">Týden</button><button data-r="month" type="button">Měsíc</button><button data-r="year" type="button">Rok</button></div>
+    <div id="hbody"></div>
+  </div>
+  <button class="sec" id="hback" type="button" style="width:100%">Zpět na měřidlo</button>
+</section>
+
 <section id="detail" class="hide">
   <div class="card">
     <strong id="dname"></strong>
@@ -141,7 +175,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.8.1';
+const VERSION = '1.9.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -254,8 +288,73 @@ async function loadList() {
 $('reload').onclick = loadList;
 $('list').addEventListener('click', e => {
   const b = e.target.closest('.meter'); if (!b) return;
-  current = meters.find(m => m.id === b.dataset.id); if (current) openCamera();
+  current = meters.find(m => m.id === b.dataset.id); if (current) openMeter(current);
 });
+
+// ================= obrazovky =================
+function show(name) {
+  ['home', 'meter', 'hist', 'detail'].forEach(n => $(n).classList.toggle('hide', n !== name));
+  $('hero').style.display = name === 'home' ? '' : 'none'; $('bchips').style.display = name === 'home' ? '' : 'none';
+  window.scrollTo(0, 0);
+}
+function openMeter(m) {
+  current = m;
+  $('micon').textContent = iconFor(m); $('mname').textContent = m.name;
+  $('msub').textContent = [m.building ? 'Budova ' + m.building : '', m.place, m.typeName].filter(Boolean).join(' · ');
+  $('mlast').textContent = lastInfo(m) + (m.last ? ' (stav ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ')' : '');
+  show('meter');
+}
+$('mshot').onclick = () => openCamera();
+$('mback').onclick = () => show('home');
+$('hback').onclick = () => show('meter');
+$('mhist').onclick = async () => { $('hname').textContent = current.name + (current.building ? ' · ' + current.building : ''); show('hist'); await loadHist(); };
+
+// ================= detail měření: týden / měsíc / rok =================
+let hist = { id: null, readings: null, range: 'week' };
+$('hrange').addEventListener('click', e => { const r = e.target.dataset.r; if (!r) return; hist.range = r; if (hist.readings) renderHist(); });
+async function loadHist() {
+  const body = $('hbody');
+  if (hist.id !== current.id || !hist.readings) {
+    body.innerHTML = '<p class="note">Načítám…</p>';
+    try {
+      const r = await api('?token=' + encodeURIComponent(token()) + '&action=history&id=' + encodeURIComponent(current.id));
+      if (!r.ok) throw new Error(r.error || 'chyba');
+      hist = { id: current.id, range: hist.range, readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who })) };
+    } catch (e) { body.innerHTML = '<p class="note warn">Detail se nepodařilo načíst' + (e instanceof TypeError ? ' (bez připojení)' : '') + '.</p>'; return; }
+  }
+  renderHist();
+}
+const fmtD = x => fmtNum(Math.round(x * 100) / 100);
+function renderHist() {
+  for (const b of document.querySelectorAll('#hrange button')) b.classList.toggle('on', b.dataset.r === hist.range);
+  const rs = hist.readings, unit = current.unit || '', DAY = 864e5, now = new Date();
+  const inc = rs.map((x, i) => i ? x.v - rs[i - 1].v : null);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()), buckets = [];
+  if (hist.range === 'year') {
+    for (let k = 11; k >= 0; k--) { const d = new Date(today.getFullYear(), today.getMonth() - k, 1); buckets.push({ start: d, end: new Date(d.getFullYear(), d.getMonth() + 1, 1), label: String(d.getMonth() + 1), sum: 0 }); }
+  } else {
+    const n = hist.range === 'week' ? 7 : 30, wd = ['ne', 'po', 'út', 'st', 'čt', 'pá', 'so'];
+    for (let k = n - 1; k >= 0; k--) { const d = new Date(today.getFullYear(), today.getMonth(), today.getDate() - k); buckets.push({ start: d, end: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1), label: hist.range === 'week' ? wd[d.getDay()] : (k % 5 === 0 || k === n - 1 ? String(d.getDate()) : ''), sum: 0 }); }
+  }
+  const from = buckets[0].start, to = buckets[buckets.length - 1].end, idx = [];
+  let resets = 0;
+  rs.forEach((x, i) => {
+    if (x.t < from || x.t >= to) return;
+    idx.push(i);
+    const b = buckets.find(q => x.t >= q.start && x.t < q.end);
+    if (inc[i] === null) return;
+    if (inc[i] < 0) resets++; else if (b) b.sum += inc[i];
+  });
+  const total = buckets.reduce((a, b) => a + b.sum, 0), days = Math.max(1, Math.round((to - from) / DAY));
+  const W = 340, H = 150, L = 4, T = 16, B = 20, max = Math.max(...buckets.map(b => b.sum), 0.0001), bw = (W - 2 * L) / buckets.length;
+  const bars = buckets.map((b, i) => { const bh = b.sum / max * (H - T - B), x = L + i * bw; return '<rect x="' + (x + bw * 0.15).toFixed(1) + '" y="' + (H - B - bh).toFixed(1) + '" width="' + (bw * 0.7).toFixed(1) + '" height="' + Math.max(bh, b.sum > 0 ? 1.5 : 0).toFixed(1) + '" rx="2" fill="var(--acc)"/>' + (buckets.length <= 12 && b.sum > 0 ? '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - B - bh - 3).toFixed(1) + '" text-anchor="middle">' + fmtD(b.sum) + '</text>' : '') + '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + b.label + '</text>'; }).join('');
+  const rows = idx.slice().reverse().map(i => { const x = rs[i], neg = inc[i] !== null && inc[i] < 0; return '<div class="hrow' + (neg ? ' neg' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '</span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + (inc[i] === null ? 'první odečet' : neg ? 'nižší než minule' : '+' + fmtD(inc[i])) + '</span></span></div>'; }).join('');
+  $('hbody').innerHTML =
+    '<div class="tiles"><div><b>' + fmtD(total) + ' ' + unit + '</b><span>spotřeba</span></div><div><b>' + fmtD(total / days) + '</b><span>průměr za den</span></div><div><b>' + idx.length + '</b><span>odečtů</span></div></div>' +
+    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Spotřeba v období">' + bars + '</svg>' +
+    (resets ? '<p class="note warn">V období je ' + resets + ' odečet s nižším stavem než předtím. Do spotřeby se nezapočítal.</p>' : '') +
+    (idx.length ? '<div style="margin-top:6px">' + rows + '</div>' : '<p class="note">V tomto období není žádný odečet.</p>');
+}
 
 // ================= foťák =================
 let stream = null, photoB64 = '';
@@ -285,7 +384,7 @@ $('shot').onclick = () => {
 // ================= po vyfocení: AI přečte stav =================
 async function afterShot(cv) {
   photoB64 = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
-  $('home').classList.add('hide'); $('detail').classList.remove('hide');
+  show('detail');
   $('dname').textContent = current.name;
   $('dlast').textContent = current.last ? lastInfo(current) + ' (stav ' + fmtNum(current.last.value) + ' ' + (current.unit || '') + ')' : 'Zatím bez předchozího odečtu';
   $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide');
@@ -299,7 +398,7 @@ async function afterShot(cv) {
 }
 let source = 'ručně';
 $('dretake').onclick = () => openCamera();
-function backHome() { $('detail').classList.add('hide'); $('home').classList.remove('hide'); loadList(); }
+function backHome() { show('home'); loadList(); }
 $('dback').onclick = backHome;
 
 $('dsend').onclick = async () => {
