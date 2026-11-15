@@ -36,6 +36,28 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.hero{position:relative;overflow:hidden;border-radius:18px;padding:18px 16px 16px;margin-bottom:14px;color:#06312a;background:linear-gradient(135deg,#7ae6c6 0%,#4fd1ac 45%,#7fb6f2 100%);box-shadow:0 6px 18px #4fd1ac55}
+.hero:after{content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:#ffffff40}
+.hero .hi{font-size:1.05rem;font-weight:700}
+.hero .big{font-size:1.7rem;font-weight:800;margin:2px 0 8px}
+.bar{height:10px;border-radius:999px;background:#ffffff80;overflow:hidden}
+.bar i{display:block;height:100%;width:0;border-radius:999px;background:#06312a;transition:width .8s cubic-bezier(.2,.8,.2,1)}
+.brand{display:flex;align-items:center;gap:10px;margin:16px 0 12px}
+.brand img{width:44px;height:44px;border-radius:12px;box-shadow:0 3px 10px #0002}
+.brand h1{margin:0;font-size:1.2rem;line-height:1.15}
+.meter{transition:transform .12s,box-shadow .2s;box-shadow:0 2px 8px #0a2a4010;animation:rise .45s both}
+.meter:active{transform:scale(.97)}
+.meter.done{background:linear-gradient(90deg,#4fd1ac22,transparent 60%),var(--card);border-color:#4fd1ac88}
+.ico{flex:none;width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:1.5rem;background:#7fb6f233}
+.meter.done .ico{background:#4fd1ac44}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+@keyframes pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
+#yay{position:fixed;inset:0;z-index:40;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#0e1b27d9;color:#fff;text-align:center;animation:fade .25s both}
+#yay.hide{display:none}
+#yay .tick{width:110px;height:110px;border-radius:50%;background:#4fd1ac;color:#06312a;display:grid;place-items:center;font-size:3.4rem;font-weight:800;animation:pop .5s both}
+#yay b{font-size:1.5rem}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 #vf{position:fixed;inset:0;background:#000;z-index:10}
 #vf.hide{display:none}
 #vf video{width:100%;height:100%;object-fit:cover}
@@ -49,8 +71,8 @@ img.shot{width:100%;border-radius:10px;display:block}
 </head>
 <body>
 <main>
-<h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1>
-<div class="note" id="who" style="margin:-6px 0 10px"></div>
+<div class="brand"><img src="icon.svg" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1></div>
+<div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong>Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
 
@@ -83,11 +105,12 @@ img.shot{width:100%;border-radius:10px;display:block}
   <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec hide" id="torch" type="button">💡</button><button id="shot" type="button">Vyfotit</button></div>
 </div>
 <div id="toast" class="hide"></div>
+<div id="yay" class="hide"><div class="tick">✓</div><b id="yaytext">Odesláno</b><span id="yaysub"></span></div>
 
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.1.1';
+const VERSION = '1.2.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -138,6 +161,12 @@ window.addEventListener('online', flushQueue);
 
 // ================= seznam měřidel =================
 let meters = [], current = null;
+const iconFor = m => { const n = (m.name + ' ' + (m.unit || '')).toLowerCase(); return /elektr|kwh/.test(n) ? '⚡' : /vod|m³/.test(n) && !/plyn/.test(n) ? '💧' : /plyn/.test(n) ? '🔥' : /tepl|kalor|gj|mwh/.test(n) ? '🌡️' : '📟'; };
+function renderProgress() {
+  const total = meters.length, done = meters.filter(m => m.doneThisWeek).length;
+  $('progress').textContent = !total ? 'Zatím žádná měřidla' : done === total ? 'Tento týden máte hotovo 🎉' : 'Hotovo ' + done + ' z ' + total + ' měřidel';
+  $('barfill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
+}
 async function loadList() {
   if (!token()) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Chybí tajný kód. Otevři appku přes odkaz, který ti poslali.</span>'; return; }
   $('homenote').textContent = 'Načítám…';
@@ -149,8 +178,9 @@ async function loadList() {
     try { meters = JSON.parse(lsGet('meridla.meters') || '[]'); } catch (e2) { meters = []; }
     $('homenote').textContent = meters.length ? 'Bez připojení: zobrazen poslední známý seznam.' : 'Nelze načíst seznam, zkontroluj připojení.';
   }
-  $('list').innerHTML = meters.map(m => `<button class="meter" data-id="${m.id}">
-    <span class="t"><b>${m.name.replace(/</g, '&lt;')}</b><span class="s">${m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' (' + fmtDate(m.last.time) + ')' : 'zatím bez odečtu'}</span></span>
+  renderProgress();
+  $('list').innerHTML = meters.map((m, i) => `<button class="meter${m.doneThisWeek ? ' done' : ''}" data-id="${m.id}" style="animation-delay:${i * 70}ms">
+    <span class="ico">${iconFor(m)}</span><span class="t"><b>${m.name.replace(/</g, '&lt;')}</b><span class="s">${m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' (' + fmtDate(m.last.time) + ')' : 'zatím bez odečtu'}</span></span>
     <span class="chip ${m.doneThisWeek ? 'ok' : 'todo'}">${m.doneThisWeek ? '✓ hotovo' : 'chybí'}</span></button>`).join('');
 }
 $('reload').onclick = loadList;
@@ -212,7 +242,8 @@ $('dsend').onclick = async () => {
   try {
     const r = await post(body);
     if (!r.ok) throw new Error(r.error || 'chyba');
-    toast(r.warn ? 'Odesláno, ale hodnota je nižší než minule.' : 'Odesláno ✓'); backHome();
+    if (r.warn) toast('Odesláno, ale hodnota je nižší než minule.', 5000); else yay();
+    backHome();
   } catch (e) {
     if (String(e.message) === 'token' || String(e.message) === 'data') toast('Odeslání se nepovedlo: odkaz není platný.');
     else if (!(e instanceof TypeError)) toast('Chyba serveru: ' + String(e.message).slice(0, 120), 7000);
@@ -220,9 +251,19 @@ $('dsend').onclick = async () => {
   } finally { $('dsend').disabled = false; }
 };
 
+function yay() {
+  const who = (lsGet('meridla.who') || '').split(' ')[0];
+  $('yaytext').textContent = who ? 'Díky, ' + who + '!' : 'Odesláno, díky!';
+  $('yaysub').textContent = 'Stav je zapsaný a fotka uložená.';
+  $('yay').classList.remove('hide');
+  try { navigator.vibrate && navigator.vibrate(40); } catch (e) {}
+  setTimeout(() => $('yay').classList.add('hide'), 1500);
+}
+$('yay').onclick = () => $('yay').classList.add('hide');
+
 // ================= verze a aktualizace =================
 $('ver').textContent = 'verze ' + VERSION;
-function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Přihlášen(a): ' + w : ''; }
+function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Ahoj, ' + w + ' 👋' : 'Ahoj 👋'; }
 showWho();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(reg => {
