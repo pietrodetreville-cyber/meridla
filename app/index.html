@@ -46,6 +46,17 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+#splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:radial-gradient(700px 480px at 50% 35%,var(--glow1),transparent 65%),var(--bg);transition:opacity .6s ease,visibility .6s}
+#splash.out{opacity:0;visibility:hidden}
+html:has(#splash:not(.out)){overflow:hidden}
+#splash img{width:min(54vw,250px);aspect-ratio:1;border-radius:22%;box-shadow:0 18px 50px #0a2a6045;animation:zoomin .9s cubic-bezier(.2,.9,.2,1) both,breath 2.8s ease-in-out .9s infinite}
+#splash .sname{font-weight:800;font-size:1.25rem;text-align:center;margin-top:6px}
+#splash .ssub{color:var(--mut);font-size:.9rem;min-height:1.3em}
+.sbar{width:min(54vw,250px);height:4px;border-radius:99px;background:var(--line);overflow:hidden}
+.sbar i{display:block;height:100%;width:40%;border-radius:99px;background:var(--acc);animation:slide 1.2s ease-in-out infinite}
+@keyframes zoomin{from{transform:scale(.55);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes breath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
+@keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
 .bchips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;margin:0 -2px 4px;scrollbar-width:none}
 .bchips::-webkit-scrollbar{display:none}
 .bchip{flex:none;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-weight:700}
@@ -88,6 +99,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 </style>
 </head>
 <body>
+<div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
 <div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1></div>
 <div class="bchips hide" id="bchips"></div>
@@ -129,7 +141,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.7.0';
+const VERSION = '1.8.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -333,7 +345,15 @@ if ('serviceWorker' in navigator) {
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded) return; reloaded = true; location.reload(); });
 }
-loadList(); showQueue(); flushQueue();
+// ================= start: úvodní obrazovka, data se načítají na pozadí =================
+const SPLASH_MIN = 2000, splashStart = Date.now();
+function hideSplash() { const s = $('splash'); if (!s || s.classList.contains('out')) return; s.classList.add('out'); setTimeout(() => s.remove(), 800); }
+// poslední známý seznam se ukáže hned, čerstvý se dotáhne na pozadí
+try { const c = JSON.parse(lsGet('meridla.meters') || '[]'); if (c.length) { meters = c; showWho(); renderAll(); $('homenote').textContent = 'Aktualizuji…'; } } catch (e) {}
+const loading = loadList().catch(() => {}).then(() => { const t = $('ssub'); if (t) t.textContent = 'Hotovo ✓'; });
+showQueue(); flushQueue();
+loading.then(() => setTimeout(hideSplash, Math.max(350, SPLASH_MIN - (Date.now() - splashStart))));
+setTimeout(hideSplash, 8000);
 </script>
 </body>
 </html>
