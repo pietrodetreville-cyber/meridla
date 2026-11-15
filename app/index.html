@@ -35,10 +35,10 @@ h1{font-size:1.3rem;margin:18px 0 12px}
 button{font:inherit;border:0;border-radius:12px;padding:12px 16px;background:var(--acc);color:var(--acc-fg);font-weight:600;cursor:pointer}
 button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
 button.big{width:100%;padding:16px;font-size:1.1rem}
-.meter{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);color:var(--fg);border:1px solid var(--line);padding:14px;margin-bottom:10px;border-radius:14px}
+.meter{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:var(--card);color:var(--fg);border:1px solid var(--line);padding:12px;margin-bottom:10px;border-radius:14px}
 .meter .t{flex:1}.meter b{display:block;font-size:1.05rem}
 .meter .s{display:block;font-size:.85rem;color:var(--mut)}
-.chip{font-size:.8rem;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
+.chip{font-size:.74rem;font-weight:700;padding:4px 8px;border-radius:999px;white-space:nowrap}
 .chip.ok{background:var(--ok);color:var(--acc-fg)}
 .chip.todo{background:transparent;color:var(--warn);border:1px solid var(--warn)}
 .note{color:var(--mut);font-size:.85rem}
@@ -49,7 +49,7 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
-.mid{display:block;font-weight:500;font-size:.8rem;color:var(--mut);word-break:break-all;margin-top:1px}
+.mid{display:inline-block;white-space:nowrap;font-weight:500;font-size:.72rem;color:var(--mut)}
 .callout{background:#2563eb14;border:1px solid #2563eb44;border-radius:12px;padding:10px 12px;margin:10px 0;font-size:.92rem;line-height:1.35}
 #vfhelp{position:absolute;left:16px;right:16px;top:calc(42% + 28vw + 16px);z-index:3;color:#fff;font-size:.95rem;line-height:1.4;text-align:center;background:#0008;border-radius:12px;padding:10px 12px}
 #vfhelp.hide{display:none}
@@ -103,7 +103,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 .sugg .st{flex:1;min-width:0}.sugg .st b{display:block;font-size:.95rem}.sugg .st span{display:block;font-size:.78rem;color:var(--mut);font-weight:500}
 .noanim .meter{animation:none}
 .sugg .none{padding:12px 10px;color:var(--mut);font-size:.9rem}
-.tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 7px;margin-right:6px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
+.tag{display:inline-block;font-size:.68rem;font-weight:800;padding:1px 6px;margin-right:4px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
 .chip.late{background:var(--warn);color:#fff}
 .hero{position:relative;border-radius:14px;padding:10px 14px 11px;margin:6px 0 12px;color:var(--fg);background:var(--card);border:1px solid var(--line);border-left:4px solid var(--acc);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .hero .hi{font-size:.8rem;font-weight:600;color:var(--mut)}
@@ -117,7 +117,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 .meter{transition:transform .12s,box-shadow .2s;box-shadow:0 2px 8px #0a2a4010;animation:rise .45s both}
 .meter:active{transform:scale(.97)}
 .meter.done{background:linear-gradient(90deg,#2563eb18,transparent 60%),var(--card);border-color:#2563eb66}
-.ico{flex:none;width:46px;height:46px;border-radius:14px;display:grid;place-items:center;font-size:1.5rem;background:#66728220}
+.ico{flex:none;width:40px;height:40px;border-radius:12px;display:grid;place-items:center;font-size:1.3rem;background:#66728220}
 .meter.done .ico{background:#2563eb26}
 @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 @keyframes pop{0%{transform:scale(.3);opacity:0}60%{transform:scale(1.15);opacity:1}100%{transform:scale(1)}}
@@ -210,7 +210,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.14.1';
+const VERSION = '1.14.3';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -329,7 +329,7 @@ function chipFor(m) {
   if (m.pending) return '<span class="chip todo">čeká na hodnotu</span>';
   if (!isDue(m)) return '<span class="chip ok">✓ hotovo</span>';
   if (!m.last) return '<span class="chip todo">chybí</span>';
-  return m.overdueDays ? '<span class="chip late">po termínu ' + days(m.overdueDays) + '</span>' : '<span class="chip todo">je čas</span>';
+  return m.overdueDays ? '<span class="chip late">po termínu ' + m.overdueDays + ' d</span>' : '<span class="chip todo">je čas</span>';
 }
 function renderAll(noAnim) {
   $('list').classList.toggle('noanim', !!noAnim);
@@ -337,7 +337,7 @@ function renderAll(noAnim) {
   const list = visible().slice().sort((a, b) => (isDue(b) - isDue(a)) || ((b.overdueDays || 0) - (a.overdueDays || 0)));
   if (!list.length && meters.length) { $('list').innerHTML = '<p class="note" style="text-align:center;padding:18px 0">Žádné měřidlo neodpovídá hledání.</p>'; return; }
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
-    '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + '<span class="mid">ID ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
+    '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + ' <span class="mid">– ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
     (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s">' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span></span>' +
     chipFor(m) + '</button>').join('');
