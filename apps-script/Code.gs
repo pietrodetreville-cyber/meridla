@@ -86,13 +86,14 @@ function doGet(e) {
 
 // ---------- čtení stavu z fotky (Gemini, klíč je jen zde v skriptu) ----------
 // Klíč: Nastavení projektu -> Vlastnosti skriptu -> GEMINI_KEY
+let AI_DETAIL = '';
 function geminiModels_() {
   const cache = CacheService.getScriptCache(), c = cache.get('models');
   if (c) return JSON.parse(c);
   const key = props_().getProperty('GEMINI_KEY');
   if (!key) return [];
   const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) return [];
+  if (r.getResponseCode() !== 200) { AI_DETAIL = 'seznam modelů HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/s+/g, ' ').slice(0, 150); return []; }
   const names = (JSON.parse(r.getContentText()).models || [])
     .filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0)
     .map(m => m.name.replace('models/', ''))
@@ -109,7 +110,7 @@ function readWithAi_(meter, b64) {
   if (!key) return { ok: false, error: 'nokey' };
   if (!meter || !b64) return { ok: false, error: 'data' };
   const models = geminiModels_();
-  if (!models.length) return { ok: false, error: 'nomodel' };
+  if (!models.length) return { ok: false, error: 'nomodel', detail: AI_DETAIL || 'žádný model Gemini Flash' };
   const prompt = 'Na fotce je měřidlo: ' + meter.name + ' (typ: ' + meter.type + ', jednotka: ' + meter.unit + ', počet číslic před čárkou: ' + meter.digits + '). ' +
     (meter.hint ? meter.hint + ' ' : '') +
     'Přečti aktuální stav měřidla jako jedno číslo s desetinnou tečkou. Odpověz jen JSON {"value": číslo}. Když stav nejde spolehlivě přečíst, dej {"value": null}.';
@@ -117,15 +118,18 @@ function readWithAi_(meter, b64) {
   const res = UrlFetchApp.fetchAll(models.map(m => ({
     url: 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', method: 'post',
     contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true })));
-  for (const r of res) {
-    if (r.getResponseCode() !== 200) continue;
+  const det = [];
+  for (let i = 0; i < res.length; i++) {
+    const r = res[i];
+    if (r.getResponseCode() !== 200) { det.push(models[i] + ' HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/s+/g, ' ').slice(0, 120)); continue; }
     try {
       const j = JSON.parse(r.getContentText()), t = j.candidates[0].content.parts.map(p => p.text || '').join('');
       const v = JSON.parse(t.replace(/```json|```/g, '')).value;
       if (v !== null && isFinite(Number(v))) return { ok: true, value: Number(v) };
-    } catch (e) {}
+      det.push(models[i] + ': odpověď bez čísla');
+    } catch (e) { det.push(models[i] + ': ' + e.message); }
   }
-  return { ok: false, error: 'ai' };
+  return { ok: false, error: 'ai', detail: det.join(' | ') };
 }
 
 // ---------- příjem odečtu ----------

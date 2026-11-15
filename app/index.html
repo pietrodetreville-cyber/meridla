@@ -83,7 +83,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = 1;
+const VERSION = 2;
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -190,7 +190,7 @@ async function afterShot(cv) {
   try {
     const r = await post({ token: token(), action: 'read', id: current.id, photo: photoB64 });
     if (r.ok) { $('dval').value = fmtNum(r.value); source = 'AI'; $('dstatus').textContent = 'Přečteno z fotky. Zkontroluj číslo podle fotky.'; }
-    else $('dstatus').textContent = 'Stav se nepodařilo přečíst. Opiš ho prosím ručně.';
+    else $('dstatus').textContent = 'Stav se nepodařilo přečíst (' + (r.error || '?') + (r.detail ? ': ' + r.detail : '') + '). Opiš ho prosím ručně.';
   } catch (e) { $('dstatus').textContent = 'Bez připojení. Opiš stav ručně, odešle se, až bude signál.'; }
 }
 let source = 'ručně';
