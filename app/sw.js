@@ -1,6 +1,6 @@
 // Offline: appka se uloží do cache. Nová verze čeká na potvrzení v appce.
-const VERSION = 5;
-const CACHE = 'meridla-v' + VERSION;
+const VERSION = '1.1.1';
+const CACHE = 'fotoapp-v' + VERSION;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 self.addEventListener('install', e => e.waitUntil(
   caches.open(CACHE).then(c => c.addAll(SHELL.map(u => new Request(u, { cache: 'reload' }))))));
