@@ -223,7 +223,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.15.1';
+const VERSION = '1.15.2';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -375,6 +375,7 @@ $('list').addEventListener('click', e => {
 
 // ================= fotka / plánek místa =================
 const placeMem = {};
+let lastPlaceErr = '';
 async function getPlace(m) {
   if (!m.placePhoto) return null;
   const key = m.id + '|' + m.placePhoto;
@@ -382,7 +383,7 @@ async function getPlace(m) {
   const url = 'place/' + encodeURIComponent(key);
   try { const c = await caches.open('meridla-places'); const hit = await c.match(url); if (hit) { const d = await hit.text(); if (d) { placeMem[key] = d; return d; } } } catch (e) {}
   const r = await api('?token=' + encodeURIComponent(token()) + '&action=place&id=' + encodeURIComponent(m.id));
-  if (!r.ok) return null;
+  if (!r.ok) { lastPlaceErr = r.error || 'fail'; return null; }
   const d = 'data:' + r.mime + ';base64,' + r.data; placeMem[key] = d;
   try { const c = await caches.open('meridla-places'); await c.put(url, new Response(d)); } catch (e) {}
   return d;
@@ -395,10 +396,11 @@ async function showPlace(m) {
   st.innerHTML = '<span class="spin"></span>Načítám fotku místa…'; st.style.display = '';
   $('lb').classList.remove('hide');
   let d = null;
-  try { d = await getPlace(m); } catch (e) {}
+  lastPlaceErr = '';
+  try { d = await getPlace(m); } catch (e) { lastPlaceErr = 'fail'; }
   if ($('lb').classList.contains('hide')) return;
   if (d) { img.src = d; img.style.visibility = ''; st.style.display = 'none'; }
-  else st.textContent = 'Fotku místa se nepodařilo načíst. Klepnutím to zavřeš.';
+  else st.textContent = lastPlaceErr === 'nofile' ? 'Soubor „' + m.placePhoto + '“ se ve složce Místa měřidel nenašel. Zkontroluj název včetně přípony v tabulce.' : lastPlaceErr === 'big' ? 'Soubor je příliš velký, zmenši ho.' : 'Fotku místa se nepodařilo načíst z Disku (zkontroluj oprávnění skriptu nebo nasazení).';
 }
 $('lb').onclick = () => $('lb').classList.add('hide');
 $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(current); };
