@@ -49,6 +49,13 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.spin{width:46px;height:46px;border-radius:50%;border:4px solid #ffffff3a;border-top-color:#fff;animation:spin .8s linear infinite}
+.spin.sm{width:16px;height:16px;border-width:2px;display:inline-block;vertical-align:-3px;margin-right:8px;border-color:var(--line);border-top-color:var(--acc)}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion:reduce){.spin{animation:spin 1.6s linear infinite!important}}
+#vfspin{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:#fff;z-index:2;font-weight:600}
+#vfspin.hide{display:none}
+#hint{z-index:3}#bar{z-index:3}
 .meter .s.warn{color:var(--warn);font-weight:600}
 .mhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
 .mhead strong{font-size:1.15rem}
@@ -187,6 +194,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <div id="vf" class="hide">
   <video id="video" playsinline muted></video>
   <div id="frame"></div>
+  <div id="vfspin"><div class="spin"></div><span>Spouštím foťák…</span></div>
   <div id="hint"></div>
   <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec" id="torch" type="button">💡 Baterka</button><button id="shot" type="button">Vyfotit</button></div>
 </div>
@@ -196,7 +204,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.13.1';
+const VERSION = '1.13.2';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -410,20 +418,33 @@ function renderHist() {
 
 // ================= foťák =================
 let stream = null, photoB64 = '';
-function closeVf() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $('vf').classList.add('hide'); }
+let camSeq = 0, camProbed = false;
+function closeVf() { camSeq++; if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $('vf').classList.add('hide'); $('vfspin').classList.add('hide'); }
+// rychlejší start: nižší rozlišení (pro čtení čísel stačí) a zapamatovaná kamera, která umí baterku
+const VIDEO_OPTS = { width: { ideal: 1280 }, height: { ideal: 720 } }, CAM_KEY = 'meridla.camId';
+async function getCam() {
+  const id = lsGet(CAM_KEY);
+  if (id) { try { return await navigator.mediaDevices.getUserMedia({ video: Object.assign({ deviceId: { exact: id } }, VIDEO_OPTS), audio: false }); } catch (e) { lsSet(CAM_KEY, ''); } }
+  return navigator.mediaDevices.getUserMedia({ video: Object.assign({ facingMode: { ideal: 'environment' } }, VIDEO_OPTS), audio: false });
+}
+function rememberCam(st) { const tr = st.getVideoTracks()[0]; const id = tr.getSettings && tr.getSettings().deviceId; if (id && trackCaps(tr).torch) lsSet(CAM_KEY, id); }
 async function openCamera() {
+  const my = ++camSeq;
   const hint = $('hint'); hint.textContent = 'Fotíš: ' + current.name + (current.place ? ' (' + current.place + ')' : '');
   const sm = document.createElement('small'); sm.textContent = lastInfo(current) + (current.last ? ' (stav ' + fmtNum(current.last.value) + ')' : ''); hint.appendChild(sm);
+  // foťák se ukáže hned s kolečkem, obraz naběhne, až bude hotový
+  $('vf').classList.remove('hide'); $('vfspin').classList.remove('hide');
+  torchOK = false; camProbed = false; $('torch').classList.add('na'); $('torch').disabled = false; paintTorch(false);
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
-    stream = await ensureTorchStream(stream);
-    $('video').srcObject = stream; await $('video').play(); $('vf').classList.remove('hide');
-    const caps = trackCaps(stream.getVideoTracks()[0]);
-    torchOK = !!caps.torch; $('torch').classList.toggle('na', !torchOK); paintTorch(false);
-    // baterka se sama nezapíná; kdo ji potřebuje, zapne si ji tlačítkem 💡
-    if (!torchOK) toast('Baterka z appky není dostupná. (' + camInfo(stream.getVideoTracks()[0]) + ')', 7000);
+    const st = await getCam();
+    if (my !== camSeq) { st.getTracks().forEach(t => t.stop()); return; }
+    stream = st; $('video').srcObject = st; await $('video').play();
+    if (my !== camSeq) return;
+    $('vfspin').classList.add('hide');
+    torchOK = !!trackCaps(st.getVideoTracks()[0]).torch; $('torch').classList.toggle('na', !torchOK);
+    rememberCam(st);
     setTimeout(checkDark, 1200);
-  } catch (e) { closeVf(); toast('Foťák se nepodařilo spustit. Povol ho v prohlížeči.'); }
+  } catch (e) { if (my === camSeq) { closeVf(); toast('Foťák se nepodařilo spustit. Povol ho v prohlížeči.'); } }
 }
 $('vfclose').onclick = closeVf;
 let torchOK = false, torchErr = '';
@@ -437,11 +458,11 @@ async function ensureTorchStream(first) {
     const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && d.deviceId && d.deviceId !== cur);
     first.getTracks().forEach(t => t.stop());
     for (const d of devs) {
-      let s2; try { s2 = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: d.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); } catch (e) { continue; }
+      let s2; try { s2 = await navigator.mediaDevices.getUserMedia({ video: Object.assign({ deviceId: { exact: d.deviceId } }, VIDEO_OPTS), audio: false }); } catch (e) { continue; }
       if (trackCaps(s2.getVideoTracks()[0]).torch) return s2;
       s2.getTracks().forEach(t => t.stop());
     }
-    return await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    return await navigator.mediaDevices.getUserMedia({ video: Object.assign({ facingMode: { ideal: 'environment' } }, VIDEO_OPTS), audio: false });
   } catch (e) { return first; }
 }
 async function setTorch(on) {
@@ -461,6 +482,19 @@ function checkDark() {
   if (sum / (d.length / 4) < 40 && $('torch').dataset.on !== '1') toast(torchOK ? 'Je tam tma. Zapni 💡 Baterku.' : 'Je tam tma. Posviť si prosím jiným světlem.', 4500);
 }
 $('torch').onclick = async () => {
+  // první klepnutí na telefonu, jehož výchozí kamera baterku nehlásí: zkusí se najít jiná kamera (jednorázově)
+  if (!torchOK && !camProbed && stream) {
+    camProbed = true; const b = $('torch'), my = camSeq; b.textContent = '⏳ Hledám…'; b.disabled = true;
+    try {
+      const st = await ensureTorchStream(stream);
+      if (my !== camSeq) { st.getTracks().forEach(t => t.stop()); return; }
+      if (st !== stream) { stream = st; $('video').srcObject = st; await $('video').play(); }
+    } catch (e) {}
+    b.disabled = false;
+    const tr = stream && stream.getVideoTracks()[0];
+    torchOK = !!(tr && trackCaps(tr).torch); b.classList.toggle('na', !torchOK); paintTorch(false);
+    if (torchOK) rememberCam(stream);
+  }
   if (!torchOK) { const tr = stream && stream.getVideoTracks()[0]; return toast('Telefon nehlásí pro tuto kameru baterku. Posviť si prosím jiným světlem. (' + (tr ? camInfo(tr) : 'bez kamery') + ')', 9000); }
   const on = $('torch').dataset.on !== '1';
   if (await setTorch(on)) paintTorch(on);
@@ -484,7 +518,7 @@ async function afterShot(cv) {
   $('dlast').textContent = current.last ? lastInfo(current) + ' (stav ' + fmtNum(current.last.value) + ' ' + (current.unit || '') + ')' : 'Zatím bez předchozího odečtu';
   $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide');
   $('dval').value = ''; $('dnote').value = ''; source = 'ručně'; aiValue = null; aiFailed = false;
-  $('dstatus').textContent = 'Čtu stav z fotky…';
+  $('dstatus').innerHTML = '<span class="spin sm"></span>Čtu stav z fotky…';
   const fail = () => { aiFailed = true; $('dstatus').textContent = 'Data se nepodařilo vyčíst. Zadej hodnotu ručně, nebo odešli jen fotku.'; };
   try {
     const r = await post({ token: token(), action: 'read', id: current.id, photo: photoB64 });
