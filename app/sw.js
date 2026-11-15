@@ -1,5 +1,5 @@
 // Offline: appka se uloží do cache. Nová verze čeká na potvrzení v appce.
-const VERSION = '1.5.0';
+const VERSION = '1.5.1';
 const CACHE = 'fotoapp-v' + VERSION;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 self.addEventListener('install', e => e.waitUntil(

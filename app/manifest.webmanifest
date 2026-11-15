@@ -3,8 +3,8 @@
   "short_name": "Fotoapp SVJ",
   "start_url": "./",
   "display": "standalone",
-  "background_color": "#e8f1fa",
-  "theme_color": "#4fd1ac",
+  "background_color": "#eceff3",
+  "theme_color": "#2563eb",
   "icons": [
     {
       "src": "icon.svg",
