@@ -49,6 +49,7 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.meter .s.warn{color:var(--warn);font-weight:600}
 .mhead{display:flex;align-items:center;gap:12px;margin-bottom:6px}
 .mhead strong{font-size:1.15rem}
 .seg{display:flex;gap:6px;margin:10px 0}
@@ -177,6 +178,7 @@ html:has(#splash:not(.out)){overflow:hidden}
     <label for="dnote">Poznámka (nepovinná)</label>
     <input id="dnote" type="text" autocomplete="off">
     <div class="row"><button class="sec" id="dretake" type="button">Vyfotit znovu</button><button id="dsend" type="button">Odeslat</button></div>
+    <div class="row"><button class="sec" id="dphoto" type="button">Odeslat jen fotku (bez hodnoty)</button></div>
     <div class="row"><button class="sec" id="dback" type="button">Zpět na seznam</button></div>
   </div>
 </section>
@@ -194,7 +196,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.12.3';
+const VERSION = '1.13.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -318,7 +320,7 @@ function renderAll(noAnim) {
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
     '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + '</b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
-    '<span class="s">' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span></span>' +
+    (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s">' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span></span>' +
     chipFor(m) + '</button>').join('');
 }
 async function loadList() {
@@ -480,35 +482,42 @@ async function afterShot(cv) {
   $('dname').textContent = current.name;
   $('dlast').textContent = current.last ? lastInfo(current) + ' (stav ' + fmtNum(current.last.value) + ' ' + (current.unit || '') + ')' : 'Zatím bez předchozího odečtu';
   $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide');
-  $('dval').value = ''; $('dnote').value = ''; source = 'ručně';
+  $('dval').value = ''; $('dnote').value = ''; source = 'ručně'; aiValue = null; aiFailed = false;
   $('dstatus').textContent = 'Čtu stav z fotky…';
+  const fail = () => { aiFailed = true; $('dstatus').textContent = 'Data se nepodařilo vyčíst. Zadej hodnotu ručně, nebo odešli jen fotku.'; };
   try {
     const r = await post({ token: token(), action: 'read', id: current.id, photo: photoB64 });
-    if (r.ok) { $('dval').value = fmtNum(r.value); source = 'AI'; $('dstatus').textContent = 'Přečteno z fotky. Zkontroluj číslo podle fotky.'; }
-    else $('dstatus').textContent = 'Stav se nepodařilo přečíst (' + (r.error || '?') + (r.detail ? ': ' + r.detail : '') + '). Opiš ho prosím ručně.';
-  } catch (e) { $('dstatus').textContent = e instanceof TypeError ? 'Bez připojení. Opiš stav ručně, odešle se, až bude signál.' : 'Chyba serveru, opiš stav ručně. (' + e.message + ')'; }
+    if (r.ok) { aiValue = Number(r.value); $('dval').value = fmtNum(r.value); source = 'AI'; $('dstatus').textContent = 'Přečteno z fotky. Zkontroluj číslo podle fotky.'; }
+    else fail();
+  } catch (e) { fail(); }
 }
-let source = 'ručně';
+let source = 'ručně', aiValue = null, aiFailed = false;
 $('dretake').onclick = () => openCamera();
 function backHome() { show('home'); loadList(); }
 $('dback').onclick = backHome;
 
-$('dsend').onclick = async () => {
-  const value = parseNum($('dval').value);
-  if (!isFinite(value) || $('dval').value.trim() === '') return toast('Zadej stav měřidla.');
-  if (current.last && value < current.last.value && !confirm('Zadaný stav (' + fmtNum(value) + ') je nižší než minule (' + fmtNum(current.last.value) + '). Opravdu odeslat?')) return;
-  const body = { token: token(), id: current.id, value, note: $('dnote').value.trim(), source, photo: photoB64 };
-  $('dsend').disabled = true;
+async function sendBody(body, btn, onOk) {
+  btn.disabled = true;
   try {
     const r = await post(body);
     if (!r.ok) throw new Error(r.error || 'chyba');
-    if (r.warn) toast('Odesláno, ale hodnota je nižší než minule.', 5000); else yay();
-    backHome();
+    onOk(r); backHome();
   } catch (e) {
     if (String(e.message) === 'token' || String(e.message) === 'data') toast('Odeslání se nepovedlo: odkaz není platný.');
-    else if (!(e instanceof TypeError)) toast('Chyba serveru: ' + String(e.message).slice(0, 120), 7000);
+    else if (!(e instanceof TypeError)) toast('Odeslání se nepovedlo. Zkus to prosím znovu.', 6000);
     else { try { await idbAdd(body); await showQueue(); toast('Bez signálu. Uloženo, odešle se samo.'); backHome(); } catch (e2) { toast('Nepodařilo se odeslat ani uložit.'); } }
-  } finally { $('dsend').disabled = false; }
+  } finally { btn.disabled = false; }
+}
+$('dsend').onclick = () => {
+  const value = parseNum($('dval').value);
+  if (!isFinite(value) || $('dval').value.trim() === '') return toast('Zadej stav měřidla, nebo odešli jen fotku.');
+  if (current.last && value < current.last.value && !confirm('Zadaný stav (' + fmtNum(value) + ') je nižší než minule (' + fmtNum(current.last.value) + '). Opravdu odeslat?')) return;
+  const src = aiValue !== null ? (Math.abs(value - aiValue) < 1e-9 ? 'AI' : 'AI, opraveno ručně') : 'ručně';
+  sendBody({ token: token(), id: current.id, value, note: $('dnote').value.trim(), source: src, photo: photoB64 }, $('dsend'), r => { if (r.warn) toast('Odesláno, ale hodnota je nižší než minule.', 5000); else yay(); });
+};
+$('dphoto').onclick = () => {
+  if (!confirm('Fotka se odešle bez hodnoty. Někdo z výboru dostane e-mail, aby hodnotu doplnil ručně. Odeslat?')) return;
+  sendBody({ token: token(), id: current.id, noValue: true, note: $('dnote').value.trim(), source: 'bez hodnoty', aiFailed: aiFailed, photo: photoB64 }, $('dphoto'), () => toast('Fotka odeslána. Hodnotu doplní výbor z e-mailu.', 6000));
 };
 
 function yay() {

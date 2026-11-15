@@ -68,6 +68,12 @@ function setup() {
   }
   if (!r.getRange(1, 10).getValue()) r.getRange(1, 10).setValue('Kdo');
   if (!r.getRange(1, 11).getValue()) r.getRange(1, 11).setValue('Budova');
+  if (!r.getRange(1, 12).getValue()) r.getRange(1, 12).setValue('Chyba');
+  if (!r.getRange(1, 13).getValue()) r.getRange(1, 13).setValue('ID záznamu');
+  if (!al.getRange(1, 5).getValue()) {
+    al.getRange(1, 5).setValue('Chybí hodnota');
+    if (al.getLastRow() >= 2 && String(al.getRange(2, 1).getValue()).indexOf('@') > 0) al.getRange(2, 5).setValue('ano');
+  }
   if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', DriveApp.createFolder(FOLDER_NAME).getId());
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', Utilities.getUuid().replace(/-/g, ''));
   if (!props.getProperty('NOTIFY')) props.setProperty('NOTIFY', Session.getEffectiveUser().getEmail());
@@ -193,7 +199,10 @@ function meters_() {
 
 function readings_() {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
-  return v.slice(1).filter(r => r[0]).map(r => ({ time: new Date(r[0]), id: String(r[1]), value: Number(r[3]), who: String(r[9] || '') }));
+  return v.slice(1).filter(r => r[0]).map(r => {
+    const has = r[3] !== '' && r[3] !== null && isFinite(Number(r[3]));
+    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || '') };
+  });
 }
 
 // číslo dne (podle časové zóny tabulky), aby se počítaly kalendářní dny
@@ -219,19 +228,20 @@ function weekStart_() {
 
 // ---------- seznam měřidel pro aplikaci ----------
 function doGet(e) {
+  if (e.parameter.action === 'form') return formPage_(e.parameter.rid, e.parameter.key);
   const who = who_(e.parameter.token);
   if (!who) return ok_({ ok: false, error: 'token' });
   if (e.parameter.action === 'history') {
-    const rows = readings_().filter(x => x.id === e.parameter.id).sort((a, b) => a.time - b.time).slice(-800);
+    const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
     return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who })) });
   }
   fillIds_();
   const all = readings_();
   const list = meters_().map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
-    const last = mine[0];
-    const di = dueInfo_(m, last);
-    return { ...m, last: last ? { value: last.value, time: last.time.toISOString(), who: last.who } : null, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due };
+    const lastAny = mine[0], lastVal = mine.find(x => x.has);
+    const di = dueInfo_(m, lastAny);
+    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due };
   });
   return ok_({ ok: true, who: who, meters: list });
 }
@@ -303,26 +313,35 @@ function doPost(e) {
   if (body.action === 'read') return ok_(readWithAi_(meters_().find(m => m.id === body.id), body.photo));
 
   const meter = meters_().find(m => m.id === body.id);
-  const value = Number(body.value);
-  if (!meter || !isFinite(value)) return ok_({ ok: false, error: 'data' });
+  const noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
+  const value = noValue ? NaN : Number(body.value);
+  if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo)) return ok_({ ok: false, error: 'data' });
 
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS);
-    const prev = readings_().filter(x => x.id === meter.id).sort((a, b) => b.time - a.time)[0];
-    const diff = prev ? Math.round((value - prev.value) * 1000) / 1000 : '';
+    const prev = readings_().filter(x => x.id === meter.id && x.has).sort((a, b) => b.time - a.time)[0];
+    const diff = (!noValue && prev) ? Math.round((value - prev.value) * 1000) / 1000 : '';
     let note = String(body.note || '').slice(0, 300);
-    if (prev && value < prev.value) note = ('POZOR: nižší než minule. ' + note).trim();
+    if (!noValue && prev && value < prev.value) note = ('POZOR: nižší než minule. ' + note).trim();
 
-    let fileUrl = '';
+    let fileUrl = '', blob = null;
     if (body.photo) {
       const stamp = Utilities.formatDate(new Date(), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm');
-      const blob = Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', stamp + '_' + meter.id + '.jpg');
+      blob = Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', stamp + '_' + meter.id + '.jpg');
       fileUrl = DriveApp.getFolderById(props_().getProperty('FOLDER_ID')).createFile(blob).getUrl();
     }
-    sheet.appendRow([new Date(), meter.id, meter.name, value, prev ? prev.value : '', diff, note, fileUrl, body.source || '', who, meter.building]);
+    // sloupce: Čas, id, Měřidlo, Stav, Předchozí, Přírůstek, Poznámka, Fotka, Zdroj, Kdo, Budova, Chyba, ID záznamu
+    const rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
+    const err = noValue ? 'Hodnota nezapsána' + (body.aiFailed ? ' (OCR ji nepřečetlo)' : '') : '';
+    sheet.appendRow([new Date(), meter.id, meter.name, noValue ? '' : value, (!noValue && prev) ? prev.value : '', diff, note, fileUrl,
+      noValue ? 'bez hodnoty' : (body.source || ''), who, meter.building, err, rid]);
 
+    if (noValue) {
+      try { sendMissingMail_(meter, who, rid, blob, !!body.aiFailed); } catch (mailErr) { Logger.log('E-mail o chybějící hodnotě se nepodařilo odeslat: ' + mailErr.message); }
+      return ok_({ ok: true, pendingValue: true });
+    }
     const to = props_().getProperty('NOTIFY');
     if (to) {
       MailApp.sendEmail(to, 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
@@ -331,6 +350,112 @@ function doPost(e) {
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }
     return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') === 0 });
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------- chybějící hodnota: e-mail s fotkou a odkazem na formulář ----------
+function esc_(x) { return String(x === undefined || x === null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+function formSecret_() {
+  const p = props_();
+  let sec = p.getProperty('FORM_SECRET');
+  if (!sec) { sec = Utilities.getUuid() + Utilities.getUuid(); p.setProperty('FORM_SECRET', sec); }
+  return sec;
+}
+function formKey_(rid) {
+  return Utilities.base64EncodeWebSafe(Utilities.computeHmacSha256Signature(String(rid), formSecret_())).slice(0, 22);
+}
+function formUrl_(rid) {
+  return ScriptApp.getService().getUrl() + '?action=form&rid=' + encodeURIComponent(rid) + '&key=' + encodeURIComponent(formKey_(rid));
+}
+
+// komu chodí e-maily o chybějící hodnotě: řádky v listu Upozornění s "ano" ve sloupci Chybí hodnota, jinak správce
+function missingRecipients_() {
+  const t = table_(SHEET_ALERTS), out = [];
+  if (t) t.rows.forEach(r => {
+    const f = String(r.v['chybí hodnota'] || '').trim().toLowerCase();
+    if (['ano', '1', 'x', 'true', 'yes'].indexOf(f) < 0) return;
+    String(r.v['komu'] || '').replace(/;/g, ',').split(',').forEach(a => { a = a.trim(); if (a.indexOf('@') > 0 && out.indexOf(a) < 0) out.push(a); });
+  });
+  if (!out.length) { const n = props_().getProperty('NOTIFY'); if (n) out.push(n); }
+  return out;
+}
+
+function sendMissingMail_(meter, who, rid, blob, aiFailed) {
+  const to = missingRecipients_().join(',');
+  if (!to) return;
+  const url = formUrl_(rid);
+  const title = (meter.building ? meter.building + ': ' : '') + meter.name + (meter.place ? ' (' + meter.place + ')' : '');
+  const html = '<div style="font-family:Arial,sans-serif;max-width:560px"><h3 style="margin:0 0 8px">Chybí hodnota měřidla</h3>' +
+    '<p style="margin:0 0 10px"><b>' + esc_(title) + '</b><br>Fotil(a): ' + esc_(who) + (aiFailed ? '<br>Čtení z fotky (OCR) se nepodařilo.' : '') + '</p>' +
+    (blob ? '<p><img src="cid:foto" style="max-width:100%;border-radius:8px"></p>' : '') +
+    '<p><a href="' + url + '" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Doplnit hodnotu</a></p>' +
+    '<p style="color:#666;font-size:12px">Po klepnutí se otevře formulář s fotkou a polem pro hodnotu. Odeslaná hodnota se zapíše do tabulky.</p></div>';
+  const opts = { to: to, subject: 'Fotoapp SVJ: chybí hodnota – ' + title, htmlBody: html, body: 'Chybí hodnota měřidla ' + title + '. Doplnit: ' + url, name: 'Fotoapp SVJ Od Vysoké' };
+  if (blob) opts.inlineImages = { foto: blob };
+  MailApp.sendEmail(opts);
+}
+
+// stránka s formulářem (odkaz z e-mailu): fotka + pole pro hodnotu
+function formPage_(rid, key) {
+  const page = body => HtmlService.createHtmlOutput(body).setTitle('Doplnění hodnoty').addMetaTag('viewport', 'width=device-width, initial-scale=1');
+  const msg = t => page('<div style="font-family:Arial,sans-serif;padding:24px;max-width:520px;margin:auto"><p>' + esc_(t) + '</p></div>');
+  rid = String(rid || '');
+  if (!rid || String(key || '') !== formKey_(rid)) return msg('Odkaz není platný.');
+  const data = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
+  const i = data.findIndex((r, k) => k > 0 && String(r[12]) === rid);
+  if (i < 0) return msg('Záznam nebyl nalezen.');
+  const row = data[i];
+  if (row[3] !== '' && row[3] !== null) return msg('Hodnota už je zapsaná: ' + row[3] + '. Děkujeme.');
+  let img = '';
+  const m = String(row[7]).match(/\/d\/([^/]+)/);
+  if (m) { try { const b = DriveApp.getFileById(m[1]).getBlob(); img = 'data:' + b.getContentType() + ';base64,' + Utilities.base64Encode(b.getBytes()); } catch (er) {} }
+  let prev = null;
+  for (let j = 1; j < data.length; j++) { const r = data[j]; if (j !== i && String(r[1]) === String(row[1]) && r[3] !== '' && new Date(r[0]) < new Date(row[0]) && (!prev || new Date(r[0]) > new Date(prev[0]))) prev = r; }
+  const title = (row[10] ? row[10] + ': ' : '') + row[2];
+  const js = 'const RID=' + JSON.stringify(rid) + ',KEY=' + JSON.stringify(String(key)) + ';' +
+    'function send(){const v=document.getElementById("v").value.trim();if(!v){msg("Zadej hodnotu.",1);return}document.getElementById("b").disabled=true;msg("Ukládám…",0);' +
+    'google.script.run.withSuccessHandler(function(r){document.getElementById("f").style.display="none";msg("Hotovo, hodnota "+r.value+" je zapsaná v tabulce. Děkujeme.",0)}).withFailureHandler(function(e){document.getElementById("b").disabled=false;msg(e.message||"Nepodařilo se uložit.",1)}).submitValue(RID,KEY,v,document.getElementById("n").value)}' +
+    'function msg(t,err){var m=document.getElementById("m");m.textContent=t;m.style.color=err?"#c2312a":"#1d4fbd"}';
+  return page('<div style="font-family:Arial,sans-serif;padding:18px;max-width:520px;margin:auto"><h2 style="margin:0 0 6px">Doplnění hodnoty</h2>' +
+    '<p style="margin:0 0 12px"><b>' + esc_(title) + '</b><br>Fotil(a): ' + esc_(row[9]) + (prev ? '<br>Minulý stav: ' + esc_(prev[3]) : '') + '</p>' +
+    (img ? '<img src="' + img + '" style="width:100%;border-radius:10px;margin-bottom:12px">' : '<p>Fotka není k dispozici.</p>') +
+    '<div id="f"><label style="font-size:13px;color:#555">Stav měřidla</label><input id="v" inputmode="decimal" autocomplete="off" style="width:100%;box-sizing:border-box;font-size:22px;padding:10px;margin:4px 0 10px;border:1px solid #bbb;border-radius:10px">' +
+    '<label style="font-size:13px;color:#555">Kdo doplňuje (nepovinné)</label><input id="n" style="width:100%;box-sizing:border-box;font-size:16px;padding:10px;margin:4px 0 12px;border:1px solid #bbb;border-radius:10px">' +
+    '<button id="b" onclick="send()" style="width:100%;background:#2563eb;color:#fff;border:0;border-radius:10px;padding:14px;font-size:16px;font-weight:bold">Zapsat do tabulky</button></div>' +
+    '<p id="m" style="margin-top:12px"></p><script>' + js + '</' + 'script></div>');
+}
+
+// volá se z formuláře: zapíše hodnotu do řádku, ve kterém chyběla
+function submitValue(rid, key, value, name) {
+  rid = String(rid || '');
+  if (!rid || String(key || '') !== formKey_(rid)) throw new Error('Odkaz není platný.');
+  const v = Number(String(value).replace(/\s/g, '').replace(',', '.'));
+  if (!isFinite(v) || String(value).trim() === '') throw new Error('Zadej prosím číslo.');
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS), data = sh.getDataRange().getValues();
+    const i = data.findIndex((r, k) => k > 0 && String(r[12]) === rid);
+    if (i < 0) throw new Error('Záznam nebyl nalezen.');
+    const row = data[i];
+    if (row[3] !== '' && row[3] !== null) throw new Error('Hodnota už je zapsaná.');
+    let prev = null;
+    for (let j = 1; j < data.length; j++) { const r = data[j]; if (j !== i && String(r[1]) === String(row[1]) && r[3] !== '' && new Date(r[0]) < new Date(row[0]) && (!prev || new Date(r[0]) > new Date(prev[0]))) prev = r; }
+    const diff = prev ? Math.round((v - Number(prev[3])) * 1000) / 1000 : '';
+    let note = String(row[6] || '');
+    if (prev && v < Number(prev[3])) note = ('POZOR: nižší než minule. ' + note).trim();
+    note = (note + ' Hodnotu doplnil(a) z e-mailu' + (name ? ': ' + String(name).slice(0, 60) : '') + '.').trim();
+    const n = i + 1;
+    sh.getRange(n, 4).setValue(v);
+    sh.getRange(n, 5).setValue(prev ? Number(prev[3]) : '');
+    sh.getRange(n, 6).setValue(diff);
+    sh.getRange(n, 7).setValue(note);
+    sh.getRange(n, 9).setValue('doplněno ručně (e-mail)');
+    sh.getRange(n, 12).setValue('');
+    return { ok: true, value: v };
   } finally {
     lock.releaseLock();
   }
