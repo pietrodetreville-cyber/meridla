@@ -196,7 +196,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.13.0';
+const VERSION = '1.13.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -278,7 +278,7 @@ function renderSearchBar() {
   $('qclear').classList.toggle('hide', !query);
 }
 function hideSugg() { $('sugg').classList.add('hide'); }
-function statusLine(m) { return isDue(m) ? (!m.last ? 'chybí odečet' : m.overdueDays ? 'po termínu ' + days(m.overdueDays) : 'je čas na odečet') : '✓ hotovo'; }
+function statusLine(m) { return m.pending ? 'fotka čeká na doplnění hodnoty' : isDue(m) ? (!m.last ? 'chybí odečet' : m.overdueDays ? 'po termínu ' + days(m.overdueDays) : 'je čas na odečet') : '✓ hotovo'; }
 function renderSugg() {
   const box = $('sugg'), qn = norm(query).trim(), esc = s => String(s).replace(/</g, '&lt;');
   const bs = buildingList().filter(x => !qn || qn.split(/\s+/).every(w => norm('budova ' + x).includes(w)));
@@ -308,6 +308,7 @@ function renderProgress() {
   $('barfill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
 }
 function chipFor(m) {
+  if (m.pending) return '<span class="chip todo">čeká na hodnotu</span>';
   if (!isDue(m)) return '<span class="chip ok">✓ hotovo</span>';
   if (!m.last) return '<span class="chip todo">chybí</span>';
   return m.overdueDays ? '<span class="chip late">po termínu ' + days(m.overdueDays) + '</span>' : '<span class="chip todo">je čas</span>';

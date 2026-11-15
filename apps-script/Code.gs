@@ -240,7 +240,8 @@ function doGet(e) {
   const list = meters_().map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
     const lastAny = mine[0], lastVal = mine.find(x => x.has);
-    const di = dueInfo_(m, lastAny);
+    // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
+    const di = dueInfo_(m, lastVal);
     return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due };
   });
   return ok_({ ok: true, who: who, meters: list });
@@ -487,7 +488,7 @@ function reminder() {
   try { sent = JSON.parse(props.getProperty('NOTIF') || '{}'); } catch (e) {}
   const next = {}, out = {};
   meters_().forEach(m => {
-    const last = all.filter(x => x.id === m.id).sort((x, y) => y.time - x.time)[0];
+    const last = all.filter(x => x.id === m.id && x.has).sort((x, y) => y.time - x.time)[0];
     const di = dueInfo_(m, last);
     if (!di.due) return;
     rules.forEach((r, ri) => {
