@@ -12,8 +12,8 @@
 <meta name="apple-mobile-web-app-title" content="Fotoapp SVJ">
 <meta name="application-name" content="Fotoapp SVJ">
 <style>
-:root{--bg:#eceff3;--card:rgba(255,255,255,.88);--fg:#161d27;--mut:#667282;--acc:#2563eb;--acc-fg:#ffffff;--warn:#c2312a;--ok:#2563eb;--line:#d3d9e1;--gl:#2563eb10;--gl2:#2563eb1c;--glow1:#2563eb30;--glow2:#56627430;--art:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20800%201200'%20preserveAspectRatio%3D'xMidYMid%20slice'%3E%3Cg%20fill%3D'none'%20stroke%3D'%232563eb'%20stroke-opacity%3D'0.16'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'190'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'150'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'165'%20stroke-width%3D'16'%20stroke-dasharray%3D'2%2013'%2F%3E%3Cpath%20d%3D'M660%20230%20L735%20150'%20stroke-width%3D'5'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'9'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Cpath%20d%3D'M-10%20430%20H170%20V560%20H340%20V760%20H520%20V900%20H810'%2F%3E%3Cpath%20d%3D'M-10%20470%20H130%20V600%20H300%20V800%20H480%20V940%20H810'%20stroke-opacity%3D'0.096'%2F%3E%3Cpath%20d%3D'M340%20560%20H520%20V430%20H700'%2F%3E%3Ccircle%20cx%3D'170'%20cy%3D'430'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'340'%20cy%3D'560'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'760'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'430'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'110'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'80'%2F%3E%3Cpath%20d%3D'M130%201030%20L190%20990'%2F%3E%3Crect%20x%3D'560'%20y%3D'1010'%20width%3D'170'%20height%3D'90'%20rx%3D'12'%2F%3E%3Cpath%20d%3D'M585%201070%20H620%20L640%201040%20L665%201085%20L685%201055%20H705'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E")}
-@media (prefers-color-scheme:dark){:root{--bg:#11151b;--card:rgba(26,32,40,.86);--fg:#e9edf3;--mut:#97a3b2;--acc:#5a9bff;--acc-fg:#06162f;--warn:#ff8a80;--ok:#5a9bff;--line:#2b3440;--gl:#5a9bff12;--gl2:#5a9bff20;--glow1:#2563eb55;--glow2:#5a9bff1c;--art:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20800%201200'%20preserveAspectRatio%3D'xMidYMid%20slice'%3E%3Cg%20fill%3D'none'%20stroke%3D'%237db3ff'%20stroke-opacity%3D'0.16'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'190'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'150'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'165'%20stroke-width%3D'16'%20stroke-dasharray%3D'2%2013'%2F%3E%3Cpath%20d%3D'M660%20230%20L735%20150'%20stroke-width%3D'5'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'9'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Cpath%20d%3D'M-10%20430%20H170%20V560%20H340%20V760%20H520%20V900%20H810'%2F%3E%3Cpath%20d%3D'M-10%20470%20H130%20V600%20H300%20V800%20H480%20V940%20H810'%20stroke-opacity%3D'0.096'%2F%3E%3Cpath%20d%3D'M340%20560%20H520%20V430%20H700'%2F%3E%3Ccircle%20cx%3D'170'%20cy%3D'430'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'340'%20cy%3D'560'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'760'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'430'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'110'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'80'%2F%3E%3Cpath%20d%3D'M130%201030%20L190%20990'%2F%3E%3Crect%20x%3D'560'%20y%3D'1010'%20width%3D'170'%20height%3D'90'%20rx%3D'12'%2F%3E%3Cpath%20d%3D'M585%201070%20H620%20L640%201040%20L665%201085%20L685%201055%20H705'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E")}}
+:root{--bg:#eceff3;--card:rgba(255,255,255,.88);--fg:#161d27;--mut:#667282;--acc:#2563eb;--acc-fg:#ffffff;--warn:#c2312a;--ok:#2563eb;--line:#d3d9e1;--pop:#ffffff;--gl:#2563eb10;--gl2:#2563eb1c;--glow1:#2563eb30;--glow2:#56627430;--art:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20800%201200'%20preserveAspectRatio%3D'xMidYMid%20slice'%3E%3Cg%20fill%3D'none'%20stroke%3D'%232563eb'%20stroke-opacity%3D'0.16'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'190'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'150'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'165'%20stroke-width%3D'16'%20stroke-dasharray%3D'2%2013'%2F%3E%3Cpath%20d%3D'M660%20230%20L735%20150'%20stroke-width%3D'5'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'9'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Cpath%20d%3D'M-10%20430%20H170%20V560%20H340%20V760%20H520%20V900%20H810'%2F%3E%3Cpath%20d%3D'M-10%20470%20H130%20V600%20H300%20V800%20H480%20V940%20H810'%20stroke-opacity%3D'0.096'%2F%3E%3Cpath%20d%3D'M340%20560%20H520%20V430%20H700'%2F%3E%3Ccircle%20cx%3D'170'%20cy%3D'430'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'340'%20cy%3D'560'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'760'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'430'%20r%3D'6'%20fill%3D'%232563eb'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'110'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'80'%2F%3E%3Cpath%20d%3D'M130%201030%20L190%20990'%2F%3E%3Crect%20x%3D'560'%20y%3D'1010'%20width%3D'170'%20height%3D'90'%20rx%3D'12'%2F%3E%3Cpath%20d%3D'M585%201070%20H620%20L640%201040%20L665%201085%20L685%201055%20H705'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E")}
+@media (prefers-color-scheme:dark){:root{--bg:#11151b;--card:rgba(26,32,40,.86);--fg:#e9edf3;--mut:#97a3b2;--acc:#5a9bff;--acc-fg:#06162f;--warn:#ff8a80;--ok:#5a9bff;--line:#2b3440;--pop:#1a2028;--gl:#5a9bff12;--gl2:#5a9bff20;--glow1:#2563eb55;--glow2:#5a9bff1c;--art:url("data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%20800%201200'%20preserveAspectRatio%3D'xMidYMid%20slice'%3E%3Cg%20fill%3D'none'%20stroke%3D'%237db3ff'%20stroke-opacity%3D'0.16'%20stroke-width%3D'2'%20stroke-linecap%3D'round'%20stroke-linejoin%3D'round'%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'190'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'150'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'165'%20stroke-width%3D'16'%20stroke-dasharray%3D'2%2013'%2F%3E%3Cpath%20d%3D'M660%20230%20L735%20150'%20stroke-width%3D'5'%2F%3E%3Ccircle%20cx%3D'660'%20cy%3D'230'%20r%3D'9'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Cpath%20d%3D'M-10%20430%20H170%20V560%20H340%20V760%20H520%20V900%20H810'%2F%3E%3Cpath%20d%3D'M-10%20470%20H130%20V600%20H300%20V800%20H480%20V940%20H810'%20stroke-opacity%3D'0.096'%2F%3E%3Cpath%20d%3D'M340%20560%20H520%20V430%20H700'%2F%3E%3Ccircle%20cx%3D'170'%20cy%3D'430'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'340'%20cy%3D'560'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'760'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'520'%20cy%3D'430'%20r%3D'6'%20fill%3D'%237db3ff'%20fill-opacity%3D'0.16'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'110'%2F%3E%3Ccircle%20cx%3D'130'%20cy%3D'1030'%20r%3D'80'%2F%3E%3Cpath%20d%3D'M130%201030%20L190%20990'%2F%3E%3Crect%20x%3D'560'%20y%3D'1010'%20width%3D'170'%20height%3D'90'%20rx%3D'12'%2F%3E%3Cpath%20d%3D'M585%201070%20H620%20L640%201040%20L665%201085%20L685%201055%20H705'%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E")}}
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.4 system-ui,sans-serif;padding:0 16px calc(24px + env(safe-area-inset-bottom))}
 main{max-width:560px;margin:0 auto}
@@ -72,10 +72,22 @@ html:has(#splash:not(.out)){overflow:hidden}
 @keyframes zoomin{from{transform:scale(.55);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes breath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
-.bchips{display:flex;gap:6px;position:sticky;top:0;z-index:6;padding:8px 0 8px;margin:0 0 6px;background:var(--bg);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-.bchip{position:relative;flex:1 1 0;min-width:0;padding:10px 2px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-weight:800;font-size:.92rem;line-height:1;text-align:center;white-space:nowrap;overflow:visible}
-.bchip.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc);box-shadow:0 3px 10px #2563eb40}
-.bchip i{position:absolute;top:-7px;right:-4px;font-style:normal;font-size:.66rem;font-weight:800;min-width:17px;height:17px;padding:0 4px;border-radius:999px;display:grid;place-items:center;background:var(--warn);color:#fff;box-shadow:0 2px 5px #0003}
+.sfind{position:sticky;top:0;z-index:6;padding:8px 0;margin:0 0 6px;background:var(--bg);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.sfield{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 6px 4px 12px;box-shadow:0 2px 8px #0a2a4010}
+.sfield:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px #2563eb33}
+.sfield input{flex:1;min-width:0;border:0;background:transparent;padding:9px 2px;font-size:16px;color:var(--fg);outline:none;width:auto}
+.sfield button{background:transparent;color:var(--mut);padding:6px 10px;font-size:1rem;border-radius:10px}
+.bpill.hide{display:none}
+.sfield input::-webkit-search-cancel-button{display:none}
+.bpill{display:inline-flex;align-items:center;gap:4px;background:var(--acc);color:var(--acc-fg);font-weight:800;font-size:.85rem;padding:5px 10px;border-radius:999px;white-space:nowrap;cursor:pointer}
+.sugg{position:absolute;left:0;right:0;top:calc(100% - 2px);max-height:62vh;overflow:auto;background:var(--pop);border:1px solid var(--line);border-radius:14px;box-shadow:0 14px 34px #0a2a4040;padding:6px;z-index:7}
+.sugg h4{margin:8px 8px 4px;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;color:var(--mut)}
+.sugg button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:transparent;color:var(--fg);padding:9px 8px;border-radius:10px;font-weight:600}
+.sugg button:active,.sugg button:hover{background:#2563eb14}
+.sugg .si{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#66728220;font-size:1.1rem}
+.sugg .st{flex:1;min-width:0}.sugg .st b{display:block;font-size:.95rem}.sugg .st span{display:block;font-size:.78rem;color:var(--mut);font-weight:500}
+.noanim .meter{animation:none}
+.sugg .none{padding:12px 10px;color:var(--mut);font-size:.9rem}
 .tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 7px;margin-right:6px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
 .chip.late{background:var(--warn);color:#fff}
 .hero{position:relative;overflow:hidden;border-radius:18px;padding:18px 16px 16px;margin-bottom:14px;color:#fff;background:linear-gradient(135deg,#2a6df0 0%,#1d4fbd 55%,#566274 100%);box-shadow:0 6px 18px #2563eb44}
@@ -116,7 +128,10 @@ html:has(#splash:not(.out)){overflow:hidden}
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
 <div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1></div>
-<div class="bchips hide" id="bchips"></div>
+<div class="sfind" id="sbar">
+  <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat: budova, měřidlo, umístění…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
+  <div class="sugg hide" id="sugg"></div>
+</div>
 <div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong>Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
@@ -174,7 +189,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.9.2';
+const VERSION = '1.10.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -238,22 +253,50 @@ function buildingList() {
   const num = b => /^\d+$/.test(b);
   return set.sort((a, b) => num(a) && num(b) ? a - b : num(a) ? -1 : num(b) ? 1 : a.localeCompare(b, 'cs'));
 }
-const visible = () => building ? meters.filter(m => bOf(m) === building) : meters;
-function renderChips() {
-  const bs = buildingList(), box = $('bchips');
-  if (bs.length < 2) { box.classList.add('hide'); building = ''; return; }
+// ---- hledání s našeptávačem ----
+const norm = s => String(s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+let query = '';
+const hay = m => norm([m.name, m.typeName, m.building ? 'budova ' + m.building : '', m.place, m.unit, m.last && m.last.who].filter(Boolean).join(' '));
+const textMatch = m => { const t = norm(query).split(/\s+/).filter(Boolean); if (!t.length) return true; const x = hay(m); return t.every(w => x.includes(w)); };
+const inBuilding = () => building ? meters.filter(m => bOf(m) === building) : meters;
+const visible = () => inBuilding().filter(textMatch);
+const badgeN = list => list.filter(isDue).length;
+function setBuilding(b) { building = b || ''; lsSet('meridla.building', building); query = ''; $('q').value = ''; hideSugg(); renderAll(); }
+function renderSearchBar() {
+  const bs = buildingList();
   if (building && !bs.includes(building)) building = '';
-  const badge = list => { const n = list.filter(isDue).length; return n ? '<i>' + n + '</i>' : ''; };
-  const chip = (key, label, list, on) => '<button class="bchip' + (on ? ' on' : '') + '" data-b="' + key.replace(/"/g, '') + '" style="flex-grow:' + Math.max(1.3, label.length / 3.2).toFixed(2) + '" title="' + list.length + ' ' + plural(list.length, 'měřidlo', 'měřidla', 'měřidel') + '">' + label.replace(/</g, '&lt;') + badge(list) + '</button>';
-  box.innerHTML = chip('', 'Vše', meters, !building) + bs.map(b => chip(b, b, meters.filter(m => bOf(m) === b), building === b)).join('');
-  box.classList.remove('hide');
+  $('sbar').classList.toggle('hide', !meters.length);
+  const pill = $('bpill');
+  pill.classList.toggle('hide', !building); pill.textContent = building ? 'Budova ' + building + ' ✕' : '';
+  $('qclear').classList.toggle('hide', !query);
 }
-$('bchips').addEventListener('click', e => {
-  const b = e.target.closest('.bchip'); if (!b) return;
-  building = b.dataset.b; lsSet('meridla.building', building); renderAll();
+function hideSugg() { $('sugg').classList.add('hide'); }
+function statusLine(m) { return isDue(m) ? (!m.last ? 'chybí odečet' : m.overdueDays ? 'po termínu ' + days(m.overdueDays) : 'je čas na odečet') : '✓ hotovo'; }
+function renderSugg() {
+  const box = $('sugg'), qn = norm(query).trim(), esc = s => String(s).replace(/</g, '&lt;');
+  const bs = buildingList().filter(x => !qn || qn.split(/\s+/).every(w => norm('budova ' + x).includes(w)));
+  let ms = inBuilding().filter(textMatch).sort((x, y) => (isDue(y) - isDue(x)) || ((y.overdueDays || 0) - (x.overdueDays || 0)));
+  let html = '';
+  if (!building && bs.length > 1 || (!building && bs.length === 1 && qn)) html += '<h4>Budovy</h4>' + bs.map(x => { const l = meters.filter(m => bOf(m) === x), n = badgeN(l); return '<button data-b="' + esc(x).replace(/"/g, '') + '"><span class="si">🏢</span><span class="st"><b>Budova ' + esc(x) + '</b><span>' + l.length + ' ' + plural(l.length, 'měřidlo', 'měřidla', 'měřidel') + (n ? ' · k odečtu: ' + n : ' · vše hotovo') + '</span></span></button>'; }).join('');
+  if (!qn) ms = ms.filter(isDue);
+  if (ms.length) html += '<h4>' + (qn ? 'Měřidla' : 'K odečtu') + '</h4>' + ms.slice(0, 8).map(m => '<button data-m="' + esc(m.id) + '"><span class="si">' + iconFor(m) + '</span><span class="st"><b>' + (m.building ? esc(m.building) + ' · ' : '') + esc(m.name) + '</b><span>' + [m.place, statusLine(m)].filter(Boolean).map(esc).join(' · ') + '</span></span></button>').join('');
+  else if (qn) html += '<div class="none">Nic nenalezeno.</div>';
+  else if (!html) html += '<div class="none">Vše je hotovo 🎉</div>';
+  box.innerHTML = html; box.classList.toggle('hide', !html);
+}
+$('q').addEventListener('focus', () => { renderSugg(); });
+$('q').addEventListener('input', e => { query = e.target.value; renderSearchBar(); renderSugg(); renderAll(true); });
+$('qclear').onclick = () => { query = ''; $('q').value = ''; renderSearchBar(); renderSugg(); renderAll(true); $('q').focus(); };
+$('bpill').onclick = () => setBuilding('');
+$('sugg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.m !== undefined) { current = meters.find(m => m.id === b.dataset.m); hideSugg(); $('q').blur(); if (current) openMeter(current); }
+  else if (b.dataset.b !== undefined) { setBuilding(b.dataset.b); }
 });
+document.addEventListener('pointerdown', e => { if (!e.target.closest('#sbar')) hideSugg(); });
+$('q').addEventListener('keydown', e => { if (e.key === 'Escape') { hideSugg(); $('q').blur(); } });
 function renderProgress() {
-  const list = visible(), total = list.length, due = list.filter(isDue).length, done = total - due;
+  const list = inBuilding(), total = list.length, due = list.filter(isDue).length, done = total - due;
   $('progress').textContent = !total ? 'Zatím žádná měřidla' : !due ? (building ? 'Budova ' + building + ': vše hotovo 🎉' : 'Vše je hotovo 🎉') : 'K odečtu: ' + due + ' z ' + total;
   $('barfill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
 }
@@ -262,9 +305,11 @@ function chipFor(m) {
   if (!m.last) return '<span class="chip todo">chybí</span>';
   return m.overdueDays ? '<span class="chip late">po termínu ' + days(m.overdueDays) + '</span>' : '<span class="chip todo">je čas</span>';
 }
-function renderAll() {
-  renderChips(); renderProgress();
+function renderAll(noAnim) {
+  $('list').classList.toggle('noanim', !!noAnim);
+  renderSearchBar(); renderProgress();
   const list = visible().slice().sort((a, b) => (isDue(b) - isDue(a)) || ((b.overdueDays || 0) - (a.overdueDays || 0)));
+  if (!list.length && meters.length) { $('list').innerHTML = '<p class="note" style="text-align:center;padding:18px 0">Žádné měřidlo neodpovídá hledání.</p>'; return; }
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
     '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + '</b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
@@ -293,7 +338,7 @@ $('list').addEventListener('click', e => {
 // ================= obrazovky =================
 function show(name) {
   ['home', 'meter', 'hist', 'detail'].forEach(n => $(n).classList.toggle('hide', n !== name));
-  $('hero').style.display = name === 'home' ? '' : 'none'; $('bchips').style.display = name === 'home' ? '' : 'none';
+  $('hero').style.display = name === 'home' ? '' : 'none'; $('sbar').style.display = name === 'home' ? '' : 'none'; hideSugg();
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
