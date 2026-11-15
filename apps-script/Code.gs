@@ -8,6 +8,8 @@
  * který Apps Script neumí).
  */
 
+// verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
+const SCRIPT_VERSION = '1.18.1';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -284,6 +286,7 @@ function weekStart_() {
 
 // ---------- seznam měřidel pro aplikaci ----------
 function doGet(e) {
+  if (e.parameter.action === 'version') return ok_({ ok: true, version: SCRIPT_VERSION, env: props_().getProperty('ENV') === 'test' ? 'test' : 'prod' });
   if (e.parameter.action === 'form') return formPage_(e.parameter.rid, e.parameter.key);
   const who = who_(e.parameter.token);
   if (!who) return ok_({ ok: false, error: 'token' });

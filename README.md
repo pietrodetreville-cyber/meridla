@@ -39,3 +39,21 @@ SVJ_app/
 Soubory a složky se uspořádají jedním spuštěním (menu tabulky **Měřidla → Uspořádat Disk (SVJ_app)**, nebo funkce `organizeDrive`).
 Testovací kopie skriptu musí mít předtím ve vlastnostech skriptu `ENV` = `test`, aby se její složky založily v podsložce `TESTOVACI`.
 Přesun nic nerozbije: odkazy a identifikátory souborů zůstávají stejné.
+
+## Nasazení skriptu do Googlu (clasp)
+
+Kód skriptu se do Google Apps Scriptu nahrává příkazem, ne ručním vkládáním:
+
+```
+scripts/deploy-script.sh test     # testovací tabulka
+scripts/deploy-script.sh prod     # ostrá tabulka (až bude nastaven .clasp.prod.json)
+```
+
+Příkaz nahraje `apps-script/Code.gs` a `appsscript.json`, vytvoří novou verzi a přenasadí **stejnou** webovou aplikaci (adresa `…/exec` se nemění).
+Jaká verze skriptu v Googlu běží, ukáže `ADRESA_NASAZENÍ/exec?action=version` (např. `{"version":"1.18.1","env":"test"}`).
+
+Jednorázově: nainstalovat clasp (`npm i -g @google/clasp`), `clasp login` (účet vlastníka skriptů) a zapnout Apps Script API na https://script.google.com/home/usersettings.
+Přihlašovací údaje clasp jsou jen v počítači (`~/.clasprc.json`) a do repozitáře nepatří.
+Vlastnosti skriptu (`ADMIN_PIN`, `GEMINI_KEY`, `ENV`, …) se nenahrávají, zůstávají v Googlu.
+První povolení nových oprávnění (nová služba Google) musí člověk potvrdit v editoru skriptu.
+Funkce typu `setup` se spouští ručně v editoru.
