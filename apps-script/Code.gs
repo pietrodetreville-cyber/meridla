@@ -10,7 +10,9 @@
 
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
+const SHEET_PEOPLE = 'Lidé';
 const FOLDER_NAME = 'Odečty měřidel – fotky';
+const DEFAULT_APP_URL = 'https://pietrodetreville-cyber.github.io/meridla/app/';
 
 // ---------- jednorázové nastavení ----------
 function setup() {
@@ -32,6 +34,13 @@ function setup() {
     r.setFrozenRows(1);
   }
 
+  let p = ss.getSheetByName(SHEET_PEOPLE);
+  if (!p) {
+    p = ss.insertSheet(SHEET_PEOPLE);
+    p.appendRow(['Jméno', 'Tajný kód (negenerovat ručně)', 'Odkaz pro tuto osobu']);
+    p.setFrozenRows(1);
+  }
+  if (!r.getRange(1, 10).getValue()) r.getRange(1, 10).setValue('Kdo');
   if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', DriveApp.createFolder(FOLDER_NAME).getId());
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', Utilities.getUuid().replace(/-/g, ''));
   if (!props.getProperty('NOTIFY')) props.setProperty('NOTIFY', Session.getEffectiveUser().getEmail());
@@ -39,6 +48,26 @@ function setup() {
   Logger.log('TAJNÝ KÓD (token): ' + props.getProperty('TOKEN'));
   Logger.log('Upozornění chodí na: ' + props.getProperty('NOTIFY'));
   Logger.log('Složka s fotkami: ' + DriveApp.getFolderById(props.getProperty('FOLDER_ID')).getUrl());
+}
+
+function onOpen() {
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addToUi();
+}
+
+// V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
+function generateLinks() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PEOPLE);
+  if (!sh) { SpreadsheetApp.getUi().alert('Nejdřív spusť funkci setup.'); return; }
+  const base = props_().getProperty('APP_URL') || DEFAULT_APP_URL;
+  const n = sh.getLastRow();
+  if (n < 2) return;
+  const rows = sh.getRange(2, 1, n - 1, 3).getValues();
+  const out = rows.map(r => {
+    if (!String(r[0]).trim()) return [r[1], r[2]];
+    const token = r[1] || Utilities.getUuid().replace(/-/g, '');
+    return [token, base + '#k=' + token];
+  });
+  sh.getRange(2, 2, out.length, 2).setValues(out);
 }
 
 // Vygeneruje nový tajný kód (starý přestane platit). Kód se zobrazí jen v protokolu spuštění.
@@ -51,7 +80,18 @@ function resetToken() {
 // ---------- pomocné ----------
 function ok_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
 function props_() { return PropertiesService.getScriptProperties(); }
-function tokenOk_(t) { const x = props_().getProperty('TOKEN'); return !!t && !!x && t === x; }
+// Vrací jméno člověka podle tajného kódu, nebo '' když kód neplatí.
+// Hlavní kód (vlastnost TOKEN) patří "Správci", ostatní kódy jsou v listu Lidé.
+function who_(t) {
+  if (!t) return '';
+  const master = props_().getProperty('TOKEN');
+  if (master && t === master) return 'Správce';
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PEOPLE);
+  if (!sh || sh.getLastRow() < 2) return '';
+  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
+  const hit = rows.find(r => String(r[0]).trim() && r[1] && String(r[1]) === t);
+  return hit ? String(hit[0]).trim() : '';
+}
 
 function meters_() {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS).getDataRange().getValues();
@@ -74,14 +114,15 @@ function weekStart_() {
 
 // ---------- seznam měřidel pro aplikaci ----------
 function doGet(e) {
-  if (!tokenOk_(e.parameter.token)) return ok_({ ok: false, error: 'token' });
+  const who = who_(e.parameter.token);
+  if (!who) return ok_({ ok: false, error: 'token' });
   const ws = weekStart_(), all = readings_();
   const list = meters_().map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
     const last = mine[0];
     return { ...m, last: last ? { value: last.value, time: last.time.toISOString() } : null, doneThisWeek: !!last && last.time >= ws };
   });
-  return ok_({ ok: true, meters: list });
+  return ok_({ ok: true, who: who, meters: list });
 }
 
 // Spusť jednou z editoru: vyvolá povolení externího připojení a ověří klíč Gemini.
@@ -146,7 +187,8 @@ function readWithAi_(meter, b64) {
 function doPost(e) {
   let body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return ok_({ ok: false, error: 'json' }); }
-  if (!tokenOk_(body.token)) return ok_({ ok: false, error: 'token' });
+  const who = who_(body.token);
+  if (!who) return ok_({ ok: false, error: 'token' });
   if (body.action === 'read') return ok_(readWithAi_(meters_().find(m => m.id === body.id), body.photo));
 
   const meter = meters_().find(m => m.id === body.id);
@@ -168,12 +210,12 @@ function doPost(e) {
       const blob = Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', stamp + '_' + meter.id + '.jpg');
       fileUrl = DriveApp.getFolderById(props_().getProperty('FOLDER_ID')).createFile(blob).getUrl();
     }
-    sheet.appendRow([new Date(), meter.id, meter.name, value, prev ? prev.value : '', diff, note, fileUrl, body.source || '']);
+    sheet.appendRow([new Date(), meter.id, meter.name, value, prev ? prev.value : '', diff, note, fileUrl, body.source || '', who]);
 
     const to = props_().getProperty('NOTIFY');
     if (to) {
       MailApp.sendEmail(to, 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
-        meter.name + '\nStav: ' + value + ' ' + (meter.unit || '') +
+        meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }

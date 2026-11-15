@@ -47,6 +47,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <body>
 <main>
 <h1>Odečty měřidel <span class="note" id="ver"></span></h1>
+<div class="note" id="who" style="margin:-6px 0 10px"></div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong>Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
 
@@ -83,7 +84,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = 3;
+const VERSION = 4;
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -140,7 +141,7 @@ async function loadList() {
   try {
     const r = await api('?token=' + encodeURIComponent(token()));
     if (!r.ok) { $('homenote').innerHTML = '<span class="warn">Odkaz není platný. Požádej o nový.</span>'; return; }
-    meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); $('homenote').textContent = '';
+    meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); lsSet('meridla.who', r.who || ''); showWho(); $('homenote').textContent = '';
   } catch (e) {
     try { meters = JSON.parse(lsGet('meridla.meters') || '[]'); } catch (e2) { meters = []; }
     $('homenote').textContent = meters.length ? 'Bez připojení: zobrazen poslední známý seznam.' : 'Nelze načíst seznam, zkontroluj připojení.';
@@ -218,6 +219,8 @@ $('dsend').onclick = async () => {
 
 // ================= verze a aktualizace =================
 $('ver').textContent = 'verze ' + VERSION;
+function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Přihlášen(a): ' + w : ''; }
+showWho();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(reg => {
     const offer = w => { $('upd').classList.remove('hide'); $('updgo').onclick = () => w.postMessage('skip'); };
