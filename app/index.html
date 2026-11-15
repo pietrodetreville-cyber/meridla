@@ -72,12 +72,10 @@ html:has(#splash:not(.out)){overflow:hidden}
 @keyframes zoomin{from{transform:scale(.55);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes breath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
-.bchips{display:grid;grid-template-columns:repeat(auto-fit,minmax(70px,1fr));gap:8px;margin:0 0 14px}
-.bchip{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:9px 6px 8px;border-radius:14px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-weight:800;font-size:1.05rem;line-height:1.1;min-height:52px}
-.bchip small{font-weight:500;font-size:.68rem;color:var(--mut)}
-.bchip.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc);box-shadow:0 4px 12px #2563eb40}
-.bchip.on small{color:var(--acc-fg);opacity:.85}
-.bchip i{position:absolute;top:-7px;right:-5px;font-style:normal;font-size:.72rem;min-width:20px;height:20px;padding:0 5px;border-radius:999px;display:grid;place-items:center;background:var(--warn);color:#fff;box-shadow:0 2px 6px #0003}
+.bchips{display:flex;gap:6px;position:sticky;top:0;z-index:6;padding:8px 0 8px;margin:0 0 6px;background:var(--bg);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
+.bchip{position:relative;flex:1 1 0;min-width:0;padding:10px 2px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-weight:800;font-size:.92rem;line-height:1;text-align:center;white-space:nowrap;overflow:visible}
+.bchip.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc);box-shadow:0 3px 10px #2563eb40}
+.bchip i{position:absolute;top:-7px;right:-4px;font-style:normal;font-size:.66rem;font-weight:800;min-width:17px;height:17px;padding:0 4px;border-radius:999px;display:grid;place-items:center;background:var(--warn);color:#fff;box-shadow:0 2px 5px #0003}
 .tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 7px;margin-right:6px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
 .chip.late{background:var(--warn);color:#fff}
 .hero{position:relative;overflow:hidden;border-radius:18px;padding:18px 16px 16px;margin-bottom:14px;color:#fff;background:linear-gradient(135deg,#2a6df0 0%,#1d4fbd 55%,#566274 100%);box-shadow:0 6px 18px #2563eb44}
@@ -176,7 +174,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.9.1';
+const VERSION = '1.9.2';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -246,9 +244,8 @@ function renderChips() {
   if (bs.length < 2) { box.classList.add('hide'); building = ''; return; }
   if (building && !bs.includes(building)) building = '';
   const badge = list => { const n = list.filter(isDue).length; return n ? '<i>' + n + '</i>' : ''; };
-  const sub = list => '<small>' + list.length + ' ' + plural(list.length, 'měřidlo', 'měřidla', 'měřidel') + '</small>';
-  box.innerHTML = '<button class="bchip' + (building ? '' : ' on') + '" data-b="">Vše' + sub(meters) + badge(meters) + '</button>' +
-    bs.map(b => '<button class="bchip' + (building === b ? ' on' : '') + '" data-b="' + b.replace(/"/g, '') + '">' + b.replace(/</g, '&lt;') + sub(meters.filter(m => bOf(m) === b)) + badge(meters.filter(m => bOf(m) === b)) + '</button>').join('');
+  const chip = (key, label, list, on) => '<button class="bchip' + (on ? ' on' : '') + '" data-b="' + key.replace(/"/g, '') + '" style="flex-grow:' + Math.max(1.3, label.length / 3.2).toFixed(2) + '" title="' + list.length + ' ' + plural(list.length, 'měřidlo', 'měřidla', 'měřidel') + '">' + label.replace(/</g, '&lt;') + badge(list) + '</button>';
+  box.innerHTML = chip('', 'Vše', meters, !building) + bs.map(b => chip(b, b, meters.filter(m => bOf(m) === b), building === b)).join('');
   box.classList.remove('hide');
 }
 $('bchips').addEventListener('click', e => {
