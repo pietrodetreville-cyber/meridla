@@ -123,6 +123,8 @@ html:has(#splash:not(.out)){overflow:hidden}
 #hint small{display:block;font-weight:400;font-size:.9rem;opacity:.95}
 #bar{position:absolute;left:16px;right:16px;bottom:calc(24px + env(safe-area-inset-bottom));display:flex;gap:12px}
 #bar button{flex:1}#bar .sec{color:#fff;border-color:#fff8}
+#bar #torch.on{background:#ffd54a;color:#1b1400;border-color:#ffd54a;font-weight:800}
+#bar #torch.na{opacity:.55}
 #toast{position:fixed;left:16px;right:16px;bottom:calc(20px + env(safe-area-inset-bottom));background:var(--fg);color:var(--bg);padding:12px 14px;border-radius:12px;z-index:30;text-align:center}
 #toast.hide{display:none}
 </style>
@@ -184,7 +186,7 @@ html:has(#splash:not(.out)){overflow:hidden}
   <video id="video" playsinline muted></video>
   <div id="frame"></div>
   <div id="hint"></div>
-  <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec hide" id="torch" type="button">💡</button><button id="shot" type="button">Vyfotit</button></div>
+  <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec" id="torch" type="button">💡 Baterka</button><button id="shot" type="button">Vyfotit</button></div>
 </div>
 <div id="toast" class="hide"></div>
 <div id="yay" class="hide"><div class="tick">✓</div><b id="yaytext">Odesláno</b><span id="yaysub"></span></div>
@@ -192,7 +194,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.11.1';
+const VERSION = '1.12.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -413,11 +415,30 @@ async function openCamera() {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
     $('video').srcObject = stream; await $('video').play(); $('vf').classList.remove('hide');
     const caps = (stream.getVideoTracks()[0].getCapabilities && stream.getVideoTracks()[0].getCapabilities()) || {};
-    $('torch').classList.toggle('hide', !caps.torch); $('torch').dataset.on = '';
+    torchOK = !!caps.torch; $('torch').classList.toggle('na', !torchOK); paintTorch(false);
+    // měřidla bývají v tmě: baterka se zapne sama (jde vypnout, volba se pamatuje)
+    if (torchOK && lsGet('meridla.torch') !== 'off') { await new Promise(r => setTimeout(r, 250)); paintTorch(await setTorch(true)); }
+    setTimeout(checkDark, 1200);
   } catch (e) { closeVf(); toast('Foťák se nepodařilo spustit. Povol ho v prohlížeči.'); }
 }
 $('vfclose').onclick = closeVf;
-$('torch').onclick = async () => { const on = $('torch').dataset.on !== '1'; try { await stream.getVideoTracks()[0].applyConstraints({ advanced: [{ torch: on }] }); $('torch').dataset.on = on ? '1' : ''; } catch (e) {} };
+let torchOK = false;
+async function setTorch(on) { const tr = stream && stream.getVideoTracks()[0]; if (!tr) return false; try { await tr.applyConstraints({ advanced: [{ torch: on }] }); return true; } catch (e) { return false; } }
+function paintTorch(on) { const b = $('torch'); b.classList.toggle('on', on); b.dataset.on = on ? '1' : ''; b.textContent = on ? '💡 Svítí' : '💡 Baterka'; }
+// když je obraz velmi tmavý a baterka je vypnutá, appka na to upozorní
+function checkDark() {
+  const v = $('video'); if (!stream || $('vf').classList.contains('hide') || !v.videoWidth) return;
+  const c = document.createElement('canvas'); c.width = 48; c.height = 36; const x = c.getContext('2d', { willReadFrequently: true });
+  x.drawImage(v, 0, 0, 48, 36); const d = x.getImageData(0, 0, 48, 36).data; let sum = 0;
+  for (let i = 0; i < d.length; i += 4) sum += d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+  if (sum / (d.length / 4) < 40 && $('torch').dataset.on !== '1') toast(torchOK ? 'Je tam tma. Zapni 💡 Baterku.' : 'Je tam tma. Posviť si prosím jiným světlem.', 4500);
+}
+$('torch').onclick = async () => {
+  if (!torchOK) return toast('Tenhle telefon nebo prohlížeč neumí z appky zapnout baterku (např. iPhone). Posviť si prosím jiným světlem.', 6000);
+  const on = $('torch').dataset.on !== '1';
+  if (await setTorch(on)) { paintTorch(on); lsSet('meridla.torch', on ? 'on' : 'off'); }
+  else toast('Baterku se nepodařilo zapnout.');
+};
 $('shot').onclick = () => {
   const v = $('video'), vw = v.videoWidth, vh = v.videoHeight, c = v.getBoundingClientRect(), f = $('frame').getBoundingClientRect();
   const k = Math.max(c.width / vw, c.height / vh), ox = (vw * k - c.width) / 2, oy = (vh * k - c.height) / 2;
