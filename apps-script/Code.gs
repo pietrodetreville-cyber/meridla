@@ -100,7 +100,7 @@ function meters_() {
 
 function readings_() {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
-  return v.slice(1).filter(r => r[0]).map(r => ({ time: new Date(r[0]), id: String(r[1]), value: Number(r[3]) }));
+  return v.slice(1).filter(r => r[0]).map(r => ({ time: new Date(r[0]), id: String(r[1]), value: Number(r[3]), who: String(r[9] || '') }));
 }
 
 // začátek aktuálního týdne (pondělí 0:00 v časové zóně tabulky)
@@ -120,7 +120,7 @@ function doGet(e) {
   const list = meters_().map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
     const last = mine[0];
-    return { ...m, last: last ? { value: last.value, time: last.time.toISOString() } : null, doneThisWeek: !!last && last.time >= ws };
+    return { ...m, last: last ? { value: last.value, time: last.time.toISOString(), who: last.who } : null, doneThisWeek: !!last && last.time >= ws };
   });
   return ok_({ ok: true, who: who, meters: list });
 }
