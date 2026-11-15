@@ -72,7 +72,7 @@ function setup() {
   }
 
   // složka pro plánky a fotky míst (do ní se obrázky vkládají, v tabulce se uvede název souboru)
-  if (!props.getProperty('PLACES_FOLDER_ID')) props.setProperty('PLACES_FOLDER_ID', driveRoot_().createFolder(PLACES_NAME).getId());
+  if (!props.getProperty('PLACES_FOLDER_ID')) props.setProperty('PLACES_FOLDER_ID', child_(driveRoot_(), PLACES_NAME).getId());
   const mHead = m.getRange(1, 1, 1, Math.max(1, m.getLastColumn())).getValues()[0];
   if (!mHead.some(x => /^(fotka|plánek)[_ ]?místa/i.test(String(x).trim()))) {
     let c = mHead.findIndex(x => String(x).trim() === '');
@@ -96,7 +96,7 @@ function setup() {
     al.getRange(1, 5).setValue('Chybí hodnota');
     if (al.getLastRow() >= 2 && String(al.getRange(2, 1).getValue()).indexOf('@') > 0) al.getRange(2, 5).setValue('ano');
   }
-  if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', driveRoot_().createFolder(FOLDER_NAME).getId());
+  if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', child_(driveRoot_(), FOLDER_NAME).getId());
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', Utilities.getUuid().replace(/-/g, ''));
   if (!props.getProperty('NOTIFY')) props.setProperty('NOTIFY', Session.getEffectiveUser().getEmail());
 
@@ -106,7 +106,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -556,8 +556,10 @@ function placeImage_(ref) {
 // ---------- uspořádání Disku: SVJ_app / OSTRE nebo TESTOVACI ----------
 // Ostrá i testovací verze mají každá svou podsložku; testovací kopie skriptu má ve vlastnostech ENV = test.
 function child_(parent, name) {
-  const it = parent.getFoldersByName(name);
-  return it.hasNext() ? it.next() : parent.createFolder(name);
+  const want = String(name).toLowerCase();
+  const all = parent.getFolders();
+  while (all.hasNext()) { const f = all.next(); if (f.getName().toLowerCase() === want) return f; }
+  return parent.createFolder(name);
 }
 function driveRoot_() {
   const env = props_().getProperty('ENV') === 'test' ? 'TESTOVACI' : 'OSTRE';
@@ -576,6 +578,40 @@ function organizeDrive() {
   const text = 'Složka: ' + DRIVE_ROOT + ' / ' + dest.getName() + String.fromCharCode(10) + dest.getUrl() + String.fromCharCode(10) + String.fromCharCode(10) + done.join(String.fromCharCode(10));
   Logger.log(text);
   try { SpreadsheetApp.getUi().alert(text); } catch (e) {}
+}
+
+// ---------- testovací sada ----------
+// Spouští se v OSTRÉM skriptu. V SVJ_app/TESTOVACI vytvoří kopii tabulky a obě složky pro fotky.
+function createTestSet() {
+  if (props_().getProperty('ENV') === 'test') throw new Error('Testovací sadu zakládej z ostré tabulky, ne z testovací.');
+  const nl = String.fromCharCode(10);
+  const testDir = child_(child_(DriveApp.getRootFolder(), DRIVE_ROOT), 'TESTOVACI');
+  const copyName = 'mereni_SVJ_TEST';
+  let copy, made = false;
+  const ex = testDir.getFilesByName(copyName);
+  if (ex.hasNext()) copy = ex.next();
+  else { copy = DriveApp.getFileById(SpreadsheetApp.getActive().getId()).makeCopy(copyName, testDir); made = true; }
+  child_(testDir, FOLDER_NAME);
+  child_(testDir, PLACES_NAME);
+  const text = 'Testovací sada je v: ' + DRIVE_ROOT + ' / TESTOVACI' + nl + testDir.getUrl() + nl + nl +
+    (made ? 'Vytvořena kopie tabulky: ' : 'Kopie tabulky už existovala: ') + copyName + nl + copy.getUrl() + nl + nl +
+    'Dál (v kopii): Rozšíření → Apps Script → Vlastnosti skriptu: ENV = test (a GEMINI_KEY, NOTIFY), potom spustit setup, clearTestData a resetToken.';
+  Logger.log(text);
+  try { SpreadsheetApp.getUi().alert(text); } catch (e) {}
+}
+
+// Spouští se v TESTOVACÍM skriptu (ENV = test): smaže zkopírované odečty a tajné kódy z ostré tabulky.
+// V ostré verzi odmítne běžet (ochrana ostrých dat).
+function clearTestData() {
+  if (props_().getProperty('ENV') !== 'test') throw new Error('Nejdřív nastav vlastnost skriptu ENV = test. V ostré verzi se tato funkce nespouští.');
+  const ss = SpreadsheetApp.getActive(), out = [];
+  const r = ss.getSheetByName(SHEET_READINGS);
+  if (r && r.getLastRow() > 1) { r.getRange(2, 1, r.getLastRow() - 1, Math.max(1, r.getLastColumn())).clearContent(); out.push('Odečty: smazány zkopírované řádky'); }
+  const p = ss.getSheetByName(SHEET_PEOPLE);
+  if (p && p.getLastRow() > 1) { p.getRange(2, 2, p.getLastRow() - 1, 2).clearContent(); out.push('Lidé: smazány zkopírované tajné kódy a odkazy (vygeneruješ nové)'); }
+  props_().deleteProperty('NOTIF');
+  Logger.log(out.join(String.fromCharCode(10)) + String.fromCharCode(10) + 'Teď spusť resetToken a vygeneruj odkazy (menu Měřidla).');
+  try { SpreadsheetApp.getUi().alert(out.join(String.fromCharCode(10)) + String.fromCharCode(10) + String.fromCharCode(10) + 'Teď spusť resetToken.'); } catch (e) {}
 }
 
 // kontrola listu Měřidla: duplicitní id, neznámý typ, chybějící budova

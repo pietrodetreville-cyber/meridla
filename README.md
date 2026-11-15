@@ -21,11 +21,12 @@ Testovací appka nikdy nesahá do ostré tabulky: bez adresy testovacího skript
 
 ## Zřízení testovací tabulky (jednorázově)
 
-1. V Google Tabulkách: Soubor → Vytvořit kopii (název např. `mereni_SVJ_TEST`). Zkopíruje se i vázaný skript.
-2. Rozšíření → Apps Script: v nastavení projektu → Vlastnosti skriptu přidat `ENV` = `test` (e-maily budou mít předponu `[TEST]`), `GEMINI_KEY` (klíč pro čtení z fotek) a případně změnit `NOTIFY` na testovací adresu.
-3. Spustit `setup`, potom `resetToken` (zapsat si nový tajný kód) a Implementovat → Nové nasazení → Webová aplikace (Spustit jako: já, Přístup: kdokoli).
-4. Adresu `…/exec` vložit do `app/index.html` do `ENDPOINTS.test` (větev `test`).
-5. Odkaz pro testování: `https://pietrodetreville-cyber.github.io/meridla/test/app/#k=TESTOVACÍ_KÓD`.
+1. V **ostré** tabulce: menu **Měřidla → Vytvořit testovací sadu** (funkce `createTestSet`). V `SVJ_app/TESTOVACI` vznikne kopie tabulky `mereni_SVJ_TEST` a obě složky pro fotky.
+2. V kopii: Rozšíření → Apps Script (pokud se skript nezkopíroval, vložit kód z `apps-script/Code.gs`). V nastavení projektu → Vlastnosti skriptu přidat `ENV` = `test`, `GEMINI_KEY` a případně změnit `NOTIFY` na testovací adresu.
+3. Spustit `setup` (použije složky v TESTOVACI), potom `clearTestData` (smaže zkopírované odečty a tajné kódy, běží jen s `ENV = test`) a `resetToken` (zapsat si nový tajný kód).
+4. Implementovat → Nové nasazení → Webová aplikace (Spustit jako: já, Přístup: kdokoli).
+5. Adresu `…/exec` vložit do `app/index.html` do `ENDPOINTS.test` (větev `test`).
+6. Odkaz pro testování: `https://pietrodetreville-cyber.github.io/meridla/test/app/#k=TESTOVACÍ_KÓD`.
 
 ## Uspořádání na Google Disku
 
