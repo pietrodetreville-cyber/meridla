@@ -90,7 +90,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 .sugg .none{padding:12px 10px;color:var(--mut);font-size:.9rem}
 .tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 7px;margin-right:6px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
 .chip.late{background:var(--warn);color:#fff}
-.hero{position:relative;overflow:hidden;border-radius:18px;padding:18px 16px 16px;margin-bottom:14px;color:#fff;background:linear-gradient(135deg,#2a6df0 0%,#1d4fbd 55%,#566274 100%);box-shadow:0 6px 18px #2563eb44}
+.hero{position:relative;overflow:hidden;border-radius:18px;padding:18px 16px 16px;margin:6px 0 14px;color:#fff;background:linear-gradient(135deg,#2a6df0 0%,#1d4fbd 55%,#566274 100%);box-shadow:0 6px 18px #2563eb44}
 .hero:after{content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:#ffffff22}
 .hero .hi{font-size:1.05rem;font-weight:700}
 .hero .big{font-size:1.7rem;font-weight:800;margin:2px 0 8px}
@@ -132,12 +132,12 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat: budova, měřidlo, umístění…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
   <div class="sugg hide" id="sugg"></div>
 </div>
-<div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong>Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
 
 <section id="home">
   <div id="list"></div>
+  <div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
   <p class="note" id="homenote"></p>
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
 </section>
@@ -189,7 +189,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.10.0';
+const VERSION = '1.10.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
