@@ -1,5 +1,5 @@
 // Offline: appka se uloží do cache. Nová verze čeká na potvrzení v appce.
-const VERSION = 4;
+const VERSION = 5;
 const CACHE = 'meridla-v' + VERSION;
 const SHELL = ['./', 'index.html', 'manifest.webmanifest', 'icon.svg'];
 self.addEventListener('install', e => e.waitUntil(

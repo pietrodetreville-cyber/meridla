@@ -1,9 +1,16 @@
 {
-  "name": "Odečty měřidel",
-  "short_name": "Měřidla",
+  "name": "Fotoapp SVJ Od Vysoké",
+  "short_name": "Fotoapp SVJ",
   "start_url": "./",
   "display": "standalone",
   "background_color": "#e8f1fa",
   "theme_color": "#4fd1ac",
-  "icons": [{ "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }
