@@ -83,7 +83,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = 2;
+const VERSION = 3;
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -104,7 +104,8 @@ function toast(t, ms) { const e = $('toast'); e.textContent = t; e.classList.rem
 async function api(path) { const r = await fetch(ENDPOINT + path, { redirect: 'follow' }); return r.json(); }
 async function post(obj) {
   const r = await fetch(ENDPOINT, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(obj) });
-  return r.json();
+  const t = await r.text();
+  try { return JSON.parse(t); } catch (e) { throw new Error('server: ' + t.replace(/<[^>]+>/g, ' ').replace(/s+/g, ' ').trim().slice(0, 140)); }
 }
 
 // ================= fronta odeslání (IndexedDB) =================
@@ -191,7 +192,7 @@ async function afterShot(cv) {
     const r = await post({ token: token(), action: 'read', id: current.id, photo: photoB64 });
     if (r.ok) { $('dval').value = fmtNum(r.value); source = 'AI'; $('dstatus').textContent = 'Přečteno z fotky. Zkontroluj číslo podle fotky.'; }
     else $('dstatus').textContent = 'Stav se nepodařilo přečíst (' + (r.error || '?') + (r.detail ? ': ' + r.detail : '') + '). Opiš ho prosím ručně.';
-  } catch (e) { $('dstatus').textContent = 'Bez připojení. Opiš stav ručně, odešle se, až bude signál.'; }
+  } catch (e) { $('dstatus').textContent = e instanceof TypeError ? 'Bez připojení. Opiš stav ručně, odešle se, až bude signál.' : 'Chyba serveru, opiš stav ručně. (' + e.message + ')'; }
 }
 let source = 'ručně';
 $('dretake').onclick = () => openCamera();
@@ -210,6 +211,7 @@ $('dsend').onclick = async () => {
     toast(r.warn ? 'Odesláno, ale hodnota je nižší než minule.' : 'Odesláno ✓'); backHome();
   } catch (e) {
     if (String(e.message) === 'token' || String(e.message) === 'data') toast('Odeslání se nepovedlo: odkaz není platný.');
+    else if (!(e instanceof TypeError)) toast('Chyba serveru: ' + String(e.message).slice(0, 120), 7000);
     else { try { await idbAdd(body); await showQueue(); toast('Bez signálu. Uloženo, odešle se samo.'); backHome(); } catch (e2) { toast('Nepodařilo se odeslat ani uložit.'); } }
   } finally { $('dsend').disabled = false; }
 };

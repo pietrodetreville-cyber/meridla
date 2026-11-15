@@ -84,6 +84,15 @@ function doGet(e) {
   return ok_({ ok: true, meters: list });
 }
 
+// Spusť jednou z editoru: vyvolá povolení externího připojení a ověří klíč Gemini.
+function authorize() {
+  const key = props_().getProperty('GEMINI_KEY');
+  if (!key) { Logger.log('Chybí vlastnost GEMINI_KEY (Nastavení projektu -> Vlastnosti skriptu).'); return; }
+  const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=5', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true });
+  Logger.log('Gemini odpověděl: HTTP ' + r.getResponseCode() + (r.getResponseCode() === 200 ? ' (klíč funguje)' : ' – ' + r.getContentText().replace(/s+/g, ' ').slice(0, 200)));
+  Logger.log('Vybrané modely: ' + JSON.stringify(geminiModels_()) + (AI_DETAIL ? ' / ' + AI_DETAIL : ''));
+}
+
 // ---------- čtení stavu z fotky (Gemini, klíč je jen zde v skriptu) ----------
 // Klíč: Nastavení projektu -> Vlastnosti skriptu -> GEMINI_KEY
 let AI_DETAIL = '';
