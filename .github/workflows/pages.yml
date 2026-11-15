@@ -1,0 +1,52 @@
+# Publikace na GitHub Pages: ostrá verze z větve main (adresa /app/) a testovací z větve test (adresa /test/app/).
+name: Publikace na GitHub Pages
+
+on:
+  push:
+    branches: [main, test]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Stažení větve main (ostrá verze)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: _site
+
+      - name: Stažení větve test (testovací verze)
+        uses: actions/checkout@v4
+        with:
+          ref: test
+          path: _test
+
+      - name: Sestavení webu
+        run: |
+          mkdir -p _site/test
+          cp -R _test/app _site/test/app
+          rm -rf _site/.git _site/.github
+          # testovací verze má jiný název, aby se při instalaci nepletla s ostrou
+          sed -i 's/"name": "[^"]*"/"name": "Fotoapp SVJ – TEST"/; s/"short_name": "[^"]*"/"short_name": "SVJ TEST"/; s/"theme_color": "[^"]*"/"theme_color": "#b45309"/' _site/test/app/manifest.webmanifest
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4

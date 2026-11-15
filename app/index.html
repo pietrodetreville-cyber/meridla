@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#2563eb" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#11151b" media="(prefers-color-scheme: dark)">
-<script>try{var t=localStorage.getItem('meridla.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
+<script>try{var T=location.pathname.indexOf('/test/')>=0?'T:':'';var t=localStorage.getItem(T+'meridla.theme');if(t==='light'||t==='dark')document.documentElement.setAttribute('data-theme',t)}catch(e){}</script>
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" type="image/png" href="icon-96.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
@@ -49,6 +49,7 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+#envbar{background:#b45309;color:#fff;text-align:center;font-weight:700;font-size:.78rem;letter-spacing:.02em;padding:6px 10px;border-radius:0 0 12px 12px;margin:0 -16px 6px}
 .callout.link{display:flex;align-items:center;gap:10px;cursor:pointer;border-color:#2563eb99;background:#2563eb1c;font-weight:600}
 .callout.link::after{content:"›";margin-left:auto;font-size:1.7rem;line-height:1;color:var(--acc);font-weight:700}
 .callout.link:active{background:#2563eb33}
@@ -151,6 +152,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 </style>
 </head>
 <body>
+<div id="envbar" class="hide">🧪 TESTOVACÍ VERZE · jiná tabulka než ostrý provoz</div>
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
 <div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div>
@@ -219,11 +221,17 @@ html:has(#splash:not(.out)){overflow:hidden}
 
 <script>
 // ================= nastavení =================
-const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.16.0';
+// ostré a testovací prostředí: test běží na adrese s /test/ a používá VLASTNÍ tabulku a skript
+const ENV = location.pathname.indexOf('/test/') >= 0 ? 'test' : 'prod';
+const ENDPOINTS = {
+  prod: 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec',
+  test: '' // adresa testovacího skriptu (…/exec); doplní se po jeho nasazení
+};
+const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
+const VERSION = '1.17.0';
 const $ = id => document.getElementById(id);
-const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
-const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
+const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
+const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
 
 // tajný kód přijde v odkazu za # (neodesílá se na server hostingu) a uloží se do telefonu
 (function () {
@@ -244,15 +252,17 @@ const parseNum = s => Number(String(s).trim().replace(/\s/g, '').replace(',', '.
 function toast(t, ms) { const e = $('toast'); e.textContent = t; e.classList.remove('hide'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hide'), ms || 3500); }
 
 // ================= komunikace s Google =================
-async function api(path) { const r = await fetch(ENDPOINT + path, { redirect: 'follow' }); return r.json(); }
+async function api(path) { if (!ENDPOINT) throw new Error('bez adresy skriptu');
+  const r = await fetch(ENDPOINT + path, { redirect: 'follow' }); return r.json(); }
 async function post(obj) {
+  if (!ENDPOINT) throw new Error('bez adresy skriptu');
   const r = await fetch(ENDPOINT, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(obj) });
   const t = await r.text();
   try { return JSON.parse(t); } catch (e) { throw new Error('server: ' + t.replace(/<[^>]+>/g, ' ').replace(/s+/g, ' ').trim().slice(0, 140)); }
 }
 
 // ================= fronta odeslání (IndexedDB) =================
-const idb = () => new Promise((res, rej) => { const q = indexedDB.open('meridla', 1); q.onupgradeneeded = () => q.result.createObjectStore('q', { autoIncrement: true }); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+const idb = () => new Promise((res, rej) => { const q = indexedDB.open('meridla' + (ENV === 'test' ? '-test' : ''), 1); q.onupgradeneeded = () => q.result.createObjectStore('q', { autoIncrement: true }); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
 const idbAll = async () => { const db = await idb(); return new Promise((res, rej) => { const out = [], c = db.transaction('q').objectStore('q').openCursor(); c.onsuccess = () => { const cur = c.result; if (cur) { out.push({ key: cur.key, val: cur.value }); cur.continue(); } else res(out); }; c.onerror = () => rej(c.error); }); };
 const idbAdd = async v => { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction('q', 'readwrite'); t.objectStore('q').add(v); t.oncomplete = res; t.onerror = () => rej(t.error); }); };
 const idbDel = async k => { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction('q', 'readwrite'); t.objectStore('q').delete(k); t.oncomplete = res; t.onerror = () => rej(t.error); }); };
@@ -356,6 +366,7 @@ function renderAll(noAnim) {
     (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
 }
 async function loadList() {
+  if (!ENDPOINT) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Testovací verze zatím není propojená s testovací tabulkou (chybí adresa testovacího skriptu). Ostrá data se nepoužívají.</span>'; return; }
   if (!token()) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Chybí tajný kód. Otevři appku přes odkaz, který ti poslali.</span>'; return; }
   $('homenote').textContent = 'Načítám…';
   try {
@@ -382,11 +393,11 @@ async function getPlace(m) {
   const key = m.id + '|' + m.placePhoto;
   if (placeMem[key]) return placeMem[key];
   const url = 'place/' + encodeURIComponent(key);
-  try { const c = await caches.open('meridla-places'); const hit = await c.match(url); if (hit) { const d = await hit.text(); if (d) { placeMem[key] = d; return d; } } } catch (e) {}
+  try { const c = await caches.open('meridla-places' + (ENV === 'test' ? '-test' : '')); const hit = await c.match(url); if (hit) { const d = await hit.text(); if (d) { placeMem[key] = d; return d; } } } catch (e) {}
   const r = await api('?token=' + encodeURIComponent(token()) + '&action=place&id=' + encodeURIComponent(m.id));
   if (!r.ok) { lastPlaceErr = r.error || 'fail'; return null; }
   const d = 'data:' + r.mime + ';base64,' + r.data; placeMem[key] = d;
-  try { const c = await caches.open('meridla-places'); await c.put(url, new Response(d)); } catch (e) {}
+  try { const c = await caches.open('meridla-places' + (ENV === 'test' ? '-test' : '')); await c.put(url, new Response(d)); } catch (e) {}
   return d;
 }
 // otevře fotku / plánek místa na celou obrazovku (s kolečkem, dokud se nenačte)
@@ -642,6 +653,7 @@ function applyTheme(mode) {
     if (mode === 'auto') { m.setAttribute('media', m.dataset.media); m.setAttribute('content', i === 0 ? '#2563eb' : '#11151b'); }
     else { m.removeAttribute('media'); m.setAttribute('content', mode === 'dark' ? '#11151b' : '#2563eb'); }
   });
+  if (ENV === 'test') document.querySelectorAll('meta[name=theme-color]').forEach(m => m.setAttribute('content', '#b45309'));
   const b = $('theme'); b.textContent = THEME_ICON[mode]; b.title = 'Režim: ' + THEME_NAME[mode];
   b.setAttribute('aria-label', 'Režim zobrazení: ' + THEME_NAME[mode]);
 }
@@ -655,7 +667,8 @@ $('theme').onclick = () => {
 
 // ================= verze a aktualizace =================
 { const u = lsGet('meridla.updatedTo'); if (u) { lsSet('meridla.updatedTo', ''); if (u === VERSION) setTimeout(() => toast('Aktualizováno na verzi ' + VERSION + ' ✓', 4000), 2600); } }
-$('ver').textContent = 'verze ' + VERSION;
+$('ver').textContent = 'verze ' + VERSION + (ENV === 'test' ? ' · TEST' : '');
+if (ENV === 'test') { $('envbar').classList.remove('hide'); document.title = 'TEST · ' + document.title; }
 function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Ahoj, ' + w + ' 👋' : 'Ahoj 👋'; }
 showWho();
 if ('serviceWorker' in navigator) {

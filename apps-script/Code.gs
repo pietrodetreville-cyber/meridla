@@ -132,6 +132,8 @@ function resetToken() {
 
 // ---------- pomocné ----------
 function ok_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setMimeType(ContentService.MimeType.JSON); }
+// testovací kopie skriptu má ve vlastnostech skriptu ENV = test: e-maily dostanou předponu [TEST]
+function envTag_() { return PropertiesService.getScriptProperties().getProperty('ENV') === 'test' ? '[TEST] ' : ''; }
 function props_() { return PropertiesService.getScriptProperties(); }
 // Vrací jméno člověka podle tajného kódu, nebo '' když kód neplatí.
 // Hlavní kód (vlastnost TOKEN) patří "Správci", ostatní kódy jsou v listu Lidé.
@@ -400,7 +402,7 @@ function doPost(e) {
     }
     const to = props_().getProperty('NOTIFY');
     if (to) {
-      MailApp.sendEmail(to, 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
+      MailApp.sendEmail(to, envTag_() + 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
         (meter.buildingLabel ? 'Budova: ' + meter.buildingLabel + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
@@ -449,7 +451,7 @@ function sendMissingMail_(meter, who, rid, blob, aiFailed) {
     (blob ? '<p><img src="cid:foto" style="max-width:100%;border-radius:8px"></p>' : '') +
     '<p><a href="' + url + '" style="display:inline-block;background:#2563eb;color:#fff;padding:12px 18px;border-radius:10px;text-decoration:none;font-weight:bold">Doplnit hodnotu</a></p>' +
     '<p style="color:#666;font-size:12px">Po klepnutí se otevře formulář s fotkou a polem pro hodnotu. Odeslaná hodnota se zapíše do tabulky.</p></div>';
-  const opts = { to: to, subject: 'Fotoapp SVJ: chybí hodnota – ' + title, htmlBody: html, body: 'Chybí hodnota měřidla ' + title + '. Doplnit: ' + url, name: 'Fotoapp SVJ Od Vysoké' };
+  const opts = { to: to, subject: envTag_() + 'Fotoapp SVJ: chybí hodnota – ' + title, htmlBody: html, body: 'Chybí hodnota měřidla ' + title + '. Doplnit: ' + url, name: 'Fotoapp SVJ Od Vysoké' };
   if (blob) opts.inlineImages = { foto: blob };
   MailApp.sendEmail(opts);
 }
@@ -610,7 +612,7 @@ function reminder() {
     try {
       MailApp.sendEmail({
         to: rules[ri].to,
-        subject: 'Fotoapp SVJ: chybí odečty měřidel (' + items.length + ')',
+        subject: envTag_() + 'Fotoapp SVJ: chybí odečty měřidel (' + items.length + ')',
         body: 'Dobrý den,' + '\n\n' + 'u těchto měřidel nebyl dodržen interval odečtu:' + '\n\n' + lines.join('\n') + '\n\n' + 'Otevřít aplikaci: ' + base + '\n\n' + 'Tato zpráva se pro každé měřidlo posílá jen jednou za jeden termín.',
         name: 'Fotoapp SVJ Od Vysoké'
       });
