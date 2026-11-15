@@ -9,7 +9,7 @@ here="$(cygpath -w "$(pwd)" 2>/dev/null || pwd)"
 
 case "$env" in
   test) cfg=".clasp.test.json"; dep="AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm" ;;
-  prod) cfg=".clasp.prod.json"; dep="" ;;
+  prod) cfg=".clasp.prod.json"; dep="AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI" ;;
   *) echo "Použití: $0 test|prod" >&2; exit 2 ;;
 esac
 

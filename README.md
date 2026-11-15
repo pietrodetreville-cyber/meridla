@@ -46,7 +46,7 @@ Kód skriptu se do Google Apps Scriptu nahrává příkazem, ne ručním vklád�
 
 ```
 scripts/deploy-script.sh test     # testovací tabulka
-scripts/deploy-script.sh prod     # ostrá tabulka (až bude nastaven .clasp.prod.json)
+scripts/deploy-script.sh prod     # ostrá tabulka
 ```
 
 Příkaz nahraje `apps-script/Code.gs` a `appsscript.json`, vytvoří novou verzi a přenasadí **stejnou** webovou aplikaci (adresa `…/exec` se nemění).
