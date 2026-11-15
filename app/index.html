@@ -119,7 +119,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.4.0';
+const VERSION = '1.5.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -172,7 +172,7 @@ window.addEventListener('online', flushQueue);
 
 // ================= seznam měřidel =================
 let meters = [], current = null;
-const iconFor = m => { const n = (m.name + ' ' + (m.unit || '')).toLowerCase(); return /elektr|kwh/.test(n) ? '⚡' : /vod|m³/.test(n) && !/plyn/.test(n) ? '💧' : /plyn/.test(n) ? '🔥' : /tepl|kalor|gj|mwh/.test(n) ? '🌡️' : '📟'; };
+const iconFor = m => { if (m.icon) return m.icon; const n = ((m.typeName || '') + ' ' + m.name + ' ' + (m.unit || '')).toLowerCase(); return /elektr|kwh/.test(n) ? '⚡' : /vod|m³/.test(n) && !/plyn/.test(n) ? '💧' : /plyn/.test(n) ? '🔥' : /tepl|kalor|gj|mwh/.test(n) ? '🌡️' : '📟'; };
 const isDue = m => m.due !== undefined ? m.due : !m.doneThisWeek;
 const plural = (n, a, b, c) => n === 1 ? a : n >= 2 && n <= 4 ? b : c;
 const days = n => n + ' ' + plural(n, 'den', 'dny', 'dní');
@@ -212,7 +212,7 @@ function renderAll() {
   const list = visible().slice().sort((a, b) => (isDue(b) - isDue(a)) || ((b.overdueDays || 0) - (a.overdueDays || 0)));
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
     '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + '</b>' +
-    '<span class="s">' + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
+    '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
     '<span class="s">' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span></span>' +
     chipFor(m) + '</button>').join('');
 }
@@ -239,7 +239,7 @@ $('list').addEventListener('click', e => {
 let stream = null, photoB64 = '';
 function closeVf() { if (stream) stream.getTracks().forEach(t => t.stop()); stream = null; $('vf').classList.add('hide'); }
 async function openCamera() {
-  const hint = $('hint'); hint.textContent = 'Fotíš: ' + current.name;
+  const hint = $('hint'); hint.textContent = 'Fotíš: ' + current.name + (current.place ? ' (' + current.place + ')' : '');
   const sm = document.createElement('small'); sm.textContent = lastInfo(current) + (current.last ? ' (stav ' + fmtNum(current.last.value) + ')' : ''); hint.appendChild(sm);
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });

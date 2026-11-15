@@ -11,6 +11,7 @@
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
+const SHEET_TYPES = 'Typy';
 const FOLDER_NAME = 'Odečty měřidel – fotky';
 const DEFAULT_APP_URL = 'https://pietrodetreville-cyber.github.io/meridla/app/';
 
@@ -19,13 +20,28 @@ function setup() {
   const ss = SpreadsheetApp.getActive();
   const props = PropertiesService.getScriptProperties();
 
+  // typy měřidel: společné vlastnosti (jednotka, nápověda pro čtení, ikona, výchozí interval)
+  let ty = ss.getSheetByName(SHEET_TYPES);
+  if (!ty) {
+    ty = ss.insertSheet(SHEET_TYPES);
+    ty.appendRow(['Typ', 'Jednotka', 'Zobrazení', 'Číslic před čárkou', 'Nápověda pro čtení', 'Výchozí interval (dny)', 'Ikona']);
+    ty.appendRow(['Elektroměr', 'kWh', 'digitální', 5, 'Přečti celkový stav v kWh před desetinnou čárkou. Číslice za čárkou (červené nebo v rámečku) ignoruj. Když displej střídá více hodnot, vezmi celkovou spotřebu (1.8.0).', 7, '⚡']);
+    ty.appendRow(['Vodoměr', 'm³', 'kolečka', 5, 'Přečti černá kolečka (celé m³). Červená kolečka vpravo jsou desetiny, ty ignoruj.', 7, '💧']);
+    ty.appendRow(['Plynoměr', 'm³', 'kolečka', 5, 'Přečti černá kolečka (celé m³). Červená kolečka vpravo jsou desetiny, ty ignoruj.', 7, '🔥']);
+    ty.appendRow(['Kalorimetr', 'GJ', 'digitální', 5, 'Přečti celkovou naměřenou energii (spotřebu tepla) v jednotce uvedené na displeji. Ignoruj teploty, průtok, objem a výkon.', 7, '🌡️']);
+    ty.setFrozenRows(1);
+  }
+  // měřidla: u každého stačí vybrat typ a budovu; id se doplní samo
   let m = ss.getSheetByName(SHEET_METERS);
   if (!m) {
     m = ss.insertSheet(SHEET_METERS);
-    m.appendRow(['id', 'Název', 'Typ', 'Číslic před čárkou', 'Nápověda pro čtení', 'Jednotka', 'Budova', 'Interval (dny)']);
-    m.appendRow(['elektro-kotelna', 'Elektroměr – kotelna', 'digitální', 5, 'Číslice za desetinnou čárkou (červené) ignoruj.', 'kWh', 'Kotelna', 7]);
-    m.appendRow(['voda-sklep', 'Vodoměr – sklep', 'kolečka', 5, 'Červená kolečka jsou desetiny m³.', 'm³', '271', 7]);
+    m.appendRow(['id', 'Název', 'Typ', 'Budova', 'Interval (dny)', 'Umístění']);
+    ['271', '272', '273', '274', '275'].forEach(b => ['Elektroměr', 'Vodoměr', 'Plynoměr'].forEach(t => m.appendRow(['', t, t, b, '', ''])));
+    ['Elektroměr', 'Vodoměr', 'Plynoměr', 'Kalorimetr'].forEach(t => m.appendRow(['', t, t, 'Kotelna', '', '']));
     m.setFrozenRows(1);
+    m.getRange('C2:C500').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInRange(ty.getRange('A2:A50'), true).setAllowInvalid(false).build());
+    m.getRange('D2:D500').setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(['271', '272', '273', '274', '275', 'Kotelna'], true).setAllowInvalid(true).build());
+    fillIds_();
   }
   let r = ss.getSheetByName(SHEET_READINGS);
   if (!r) {
@@ -42,8 +58,6 @@ function setup() {
   }
   if (!r.getRange(1, 10).getValue()) r.getRange(1, 10).setValue('Kdo');
   if (!r.getRange(1, 11).getValue()) r.getRange(1, 11).setValue('Budova');
-  if (!m.getRange(1, 7).getValue()) m.getRange(1, 7).setValue('Budova');
-  if (!m.getRange(1, 8).getValue()) m.getRange(1, 8).setValue('Interval (dny)');
   if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', DriveApp.createFolder(FOLDER_NAME).getId());
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', Utilities.getUuid().replace(/-/g, ''));
   if (!props.getProperty('NOTIFY')) props.setProperty('NOTIFY', Session.getEffectiveUser().getEmail());
@@ -54,7 +68,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -96,9 +110,75 @@ function who_(t) {
   return hit ? String(hit[0]).trim() : '';
 }
 
+// přečte list jako tabulku podle názvů sloupců (pořadí sloupců není důležité)
+function table_(name) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(name);
+  if (!sh) return null;
+  const v = sh.getDataRange().getValues();
+  if (!v.length) return { sheet: sh, rows: [] };
+  const head = v[0].map(h => String(h).trim().toLowerCase());
+  return { sheet: sh, rows: v.slice(1).map((r, i) => { const o = {}; head.forEach((h, k) => { if (h) o[h] = r[k]; }); return { row: i + 2, v: o }; }) };
+}
+
+function slug_(x) {
+  return String(x).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+// doplní trvalé id u řádků, které ho nemají (např. nově přidané měřidlo)
+function fillIds_() {
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS);
+    if (!sh) return;
+    const data = sh.getDataRange().getValues();
+    const head = data[0].map(h => String(h).trim().toLowerCase());
+    const ci = head.indexOf('id');
+    if (ci < 0) return;
+    const col = n => head.indexOf(n);
+    const used = {};
+    data.slice(1).forEach(r => { if (String(r[ci]).trim()) used[String(r[ci]).trim()] = 1; });
+    for (let i = 1; i < data.length; i++) {
+      const r = data[i];
+      if (String(r[ci]).trim()) continue;
+      const name = col('název') >= 0 ? String(r[col('název')] || '').trim() : '';
+      const type = col('typ') >= 0 ? String(r[col('typ')] || '').trim() : '';
+      const b = col('budova') >= 0 ? String(r[col('budova')] || '').trim() : '';
+      if (!name && !type) continue;
+      const base = slug_([b, type || name].filter(Boolean).join('-'));
+      let n = 1, id;
+      do { id = base + '-' + n++; } while (used[id]);
+      used[id] = 1;
+      sh.getRange(i + 1, ci + 1).setValue(id);
+    }
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// měřidla: vlastnosti z listu Měřidla, doplněné výchozími hodnotami podle typu z listu Typy
 function meters_() {
-  const v = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS).getDataRange().getValues();
-  return v.slice(1).filter(r => r[0]).map(r => ({ id: String(r[0]), name: r[1], type: r[2], digits: r[3], hint: r[4], unit: r[5], building: String(r[6] || '').trim(), interval: Number(r[7]) > 0 ? Math.round(Number(r[7])) : 7 }));
+  const types = {};
+  const tt = table_(SHEET_TYPES);
+  if (tt) tt.rows.forEach(r => { const k = String(r.v['typ'] || '').trim().toLowerCase(); if (k) types[k] = r.v; });
+  const mt = table_(SHEET_METERS);
+  const num = x => Number(x) > 0 ? Math.round(Number(x)) : 0;
+  return mt.rows.filter(r => String(r.v['id'] || '').trim()).map(r => {
+    const v = r.v, typeName = String(v['typ'] || '').trim(), t = types[typeName.toLowerCase()] || {};
+    return {
+      id: String(v['id']).trim(),
+      name: String(v['název'] || typeName).trim(),
+      typeName: typeName,
+      type: String(v['zobrazení'] || t['zobrazení'] || typeName),
+      digits: v['číslic před čárkou'] || t['číslic před čárkou'] || '',
+      hint: String(v['nápověda pro čtení'] || t['nápověda pro čtení'] || ''),
+      unit: String(v['jednotka'] || t['jednotka'] || ''),
+      building: String(v['budova'] || '').trim(),
+      place: String(v['umístění'] || '').trim(),
+      icon: String(t['ikona'] || '').trim(),
+      interval: num(v['interval (dny)'] || v['interval']) || num(t['výchozí interval (dny)']) || 7
+    };
+  });
 }
 
 function readings_() {
@@ -131,6 +211,7 @@ function weekStart_() {
 function doGet(e) {
   const who = who_(e.parameter.token);
   if (!who) return ok_({ ok: false, error: 'token' });
+  fillIds_();
   const all = readings_();
   const list = meters_().map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
@@ -177,7 +258,7 @@ function readWithAi_(meter, b64) {
   if (!meter || !b64) return { ok: false, error: 'data' };
   const models = geminiModels_();
   if (!models.length) return { ok: false, error: 'nomodel', detail: AI_DETAIL || 'žádný model Gemini Flash' };
-  const prompt = 'Na fotce je měřidlo: ' + meter.name + ' (typ: ' + meter.type + ', jednotka: ' + meter.unit + ', počet číslic před čárkou: ' + meter.digits + '). ' +
+  const prompt = 'Na fotce je měřidlo: ' + meter.name + ' (druh: ' + meter.typeName + ', zobrazení: ' + meter.type + ', jednotka: ' + meter.unit + ', počet číslic před čárkou: ' + meter.digits + '). ' +
     (meter.hint ? meter.hint + ' ' : '') +
     'Přečti aktuální stav měřidla jako jedno číslo s desetinnou tečkou. Odpověz jen JSON {"value": číslo}. Když stav nejde spolehlivě přečíst, dej {"value": null}.';
   const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
