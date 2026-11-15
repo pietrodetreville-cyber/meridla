@@ -72,8 +72,8 @@ html:has(#splash:not(.out)){overflow:hidden}
 @keyframes zoomin{from{transform:scale(.55);opacity:0}to{transform:scale(1);opacity:1}}
 @keyframes breath{0%,100%{transform:scale(1)}50%{transform:scale(1.04)}}
 @keyframes slide{0%{transform:translateX(-100%)}100%{transform:translateX(260%)}}
-.sfind{position:sticky;top:0;z-index:6;padding:8px 0;margin:0 0 6px;background:var(--bg);background:color-mix(in srgb,var(--bg) 82%,transparent);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
-.sfield{display:flex;align-items:center;gap:6px;background:var(--card);border:1px solid var(--line);border-radius:14px;padding:4px 6px 4px 12px;box-shadow:0 2px 8px #0a2a4010}
+.sfind{position:sticky;top:0;z-index:6;padding:4px 0 8px;margin:0 0 4px}
+.sfield{display:flex;align-items:center;gap:6px;background:var(--pop);border:1px solid var(--line);border-radius:14px;padding:4px 6px 4px 12px;box-shadow:0 2px 8px #0a2a4010}
 .sfield:focus-within{border-color:var(--acc);box-shadow:0 0 0 3px #2563eb33}
 .sfield input{flex:1;min-width:0;border:0;background:transparent;padding:9px 2px;font-size:16px;color:var(--fg);outline:none;width:auto}
 .sfield button{background:transparent;color:var(--mut);padding:6px 10px;font-size:1rem;border-radius:10px}
@@ -127,6 +127,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
 <div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1></div>
+<div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
 <div class="sfind" id="sbar">
   <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat: budova, měřidlo, umístění…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
   <div class="sugg hide" id="sugg"></div>
@@ -136,7 +137,6 @@ html:has(#splash:not(.out)){overflow:hidden}
 
 <section id="home">
   <div id="list"></div>
-  <div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
   <p class="note" id="homenote"></p>
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
 </section>
@@ -188,7 +188,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.10.2';
+const VERSION = '1.10.3';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
