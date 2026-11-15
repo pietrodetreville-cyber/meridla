@@ -194,7 +194,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.12.1';
+const VERSION = '1.12.2';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -417,8 +417,7 @@ async function openCamera() {
     $('video').srcObject = stream; await $('video').play(); $('vf').classList.remove('hide');
     const caps = trackCaps(stream.getVideoTracks()[0]);
     torchOK = !!caps.torch; $('torch').classList.toggle('na', !torchOK); paintTorch(false);
-    // měřidla bývají v tmě: baterka se zapne sama (jde vypnout, volba se pamatuje)
-    if (torchOK && lsGet('meridla.torch') !== 'off') { await new Promise(r => setTimeout(r, 250)); const ok = await setTorch(true); paintTorch(ok); if (!ok) toast('Baterku se nepodařilo zapnout. (' + torchErr + ')', 7000); }
+    // baterka se sama nezapíná; kdo ji potřebuje, zapne si ji tlačítkem 💡
     if (!torchOK) toast('Baterka z appky není dostupná. (' + camInfo(stream.getVideoTracks()[0]) + ')', 7000);
     setTimeout(checkDark, 1200);
   } catch (e) { closeVf(); toast('Foťák se nepodařilo spustit. Povol ho v prohlížeči.'); }
@@ -461,7 +460,7 @@ function checkDark() {
 $('torch').onclick = async () => {
   if (!torchOK) { const tr = stream && stream.getVideoTracks()[0]; return toast('Telefon nehlásí pro tuto kameru baterku. Posviť si prosím jiným světlem. (' + (tr ? camInfo(tr) : 'bez kamery') + ')', 9000); }
   const on = $('torch').dataset.on !== '1';
-  if (await setTorch(on)) { paintTorch(on); lsSet('meridla.torch', on ? 'on' : 'off'); }
+  if (await setTorch(on)) paintTorch(on);
   else toast('Baterku se nepodařilo zapnout. (' + torchErr + ')', 8000);
 };
 $('shot').onclick = () => {
