@@ -232,6 +232,7 @@ function meters_() {
     const parent = bName && B[bName.toLowerCase()] ? B[bName.toLowerCase()].parent : '';
     return {
       id: id,
+      row: r.row,
       name: String(v['název'] || typeName).trim(),
       typeName: typeName,
       type: String(v['zobrazení'] || t['zobrazení'] || typeName),
@@ -371,6 +372,8 @@ function doPost(e) {
   const who = who_(body.token);
   if (!who) return ok_({ ok: false, error: 'token' });
   if (body.action === 'read') return ok_(readWithAi_(meters_().find(m => m.id === body.id), body.photo));
+  if (body.action === 'adminCheck') return ok_(adminCheck_(body.pin));
+  if (body.action === 'placeUpload') return ok_(placeUpload_(body));
 
   const meter = meters_().find(m => m.id === body.id);
   const noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
@@ -518,6 +521,43 @@ function submitValue(rid, key, value, name) {
     sh.getRange(n, 9).setValue('doplněno ručně (e-mail)');
     sh.getRange(n, 12).setValue('');
     return { ok: true, value: v };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// ---------- správce: PIN a nahrání fotky místa z appky ----------
+// PIN je ve vlastnostech skriptu (ADMIN_PIN). Ověřuje se tady, ne v appce. Po 5 špatných pokusech se na 10 minut zamkne.
+function adminCheck_(pin) {
+  const want = props_().getProperty('ADMIN_PIN');
+  if (!want) return { ok: false, error: 'nopin' };
+  const cache = CacheService.getScriptCache(), fails = Number(cache.get('pinfail') || 0);
+  if (fails >= 5) return { ok: false, error: 'locked' };
+  if (String(pin || '') !== String(want)) { cache.put('pinfail', String(fails + 1), 600); return { ok: false, error: 'pin' }; }
+  cache.remove('pinfail');
+  return { ok: true };
+}
+
+// Uloží novou fotku místa do složky Místa měřidel a zapíše její název k měřidlu. Stará fotka na Disku zůstává (nic se nemaže).
+function placeUpload_(body) {
+  const chk = adminCheck_(body.pin);
+  if (!chk.ok) return chk;
+  const meter = meters_().find(m => m.id === body.id);
+  if (!meter || !body.photo) return { ok: false, error: 'data' };
+  const fid = props_().getProperty('PLACES_FOLDER_ID');
+  if (!fid) return { ok: false, error: 'nofolder' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const stamp = Utilities.formatDate(new Date(), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyyMMdd-HHmm');
+    const name = 'misto-' + (slug_(String(meter.id).replace(/#.*$/, '')) || 'meridlo') + '-' + stamp + '.jpg';
+    DriveApp.getFolderById(fid).createFile(Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', name));
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS);
+    const head = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0];
+    let col = head.findIndex(x => /^(fotka|plánek)[_ ]?místa/i.test(String(x).trim()));
+    if (col < 0) { col = head.findIndex(x => String(x).trim() === ''); if (col < 0) col = head.length; sh.getRange(1, col + 1).setValue('Fotka_místa'); }
+    sh.getRange(meter.row, col + 1).setValue(name);
+    return { ok: true, name: name };
   } finally {
     lock.releaseLock();
   }

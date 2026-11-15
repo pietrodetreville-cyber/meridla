@@ -49,6 +49,13 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.linkbtn{display:block;margin:12px auto 0;background:transparent;color:var(--mut);padding:8px 12px;font-weight:500;font-size:.85rem}
+#pinov{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
+#pinov.hide{display:none}
+#pinov .card{width:100%;max-width:340px;margin:0}
+#pinov input{font-size:1.6rem;text-align:center;letter-spacing:.3em}
+#ppreview{width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:10px}
+#ppreview.hide{display:none}
 #envbar{background:#b45309;color:#fff;text-align:center;font-weight:700;font-size:.78rem;letter-spacing:.02em;padding:6px 10px;border-radius:0 0 12px 12px;margin:0 -16px 6px}
 .callout.link{display:flex;align-items:center;gap:10px;cursor:pointer;border-color:#2563eb99;background:#2563eb1c;font-weight:600}
 .callout.link::after{content:"›";margin-left:auto;font-size:1.7rem;line-height:1;color:var(--acc);font-weight:700}
@@ -178,6 +185,16 @@ html:has(#splash:not(.out)){overflow:hidden}
     <div class="row"><button id="mshot" type="button">📷 Vyfotit měřidlo</button></div>
     <div class="row"><button class="sec" id="mhist" type="button">📊 Detail měření</button></div>
     <div class="row"><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
+    <div id="madminpanel" class="callout hide">
+      <b>Správce · fotka místa</b>
+      <div class="note" style="margin:4px 0 8px">Nová fotka nahradí stávající. Stará zůstane na Disku ve složce Místa měřidel.</div>
+      <div class="row" style="margin-top:6px"><button class="sec" id="pcamb" type="button">📷 Vyfotit místo</button><button class="sec" id="pfileb" type="button">🖼️ Z galerie</button></div>
+      <input id="pcam" type="file" accept="image/*" capture="environment" class="hide"><input id="pfile" type="file" accept="image/*" class="hide">
+      <img id="ppreview" class="hide" alt="Náhled nové fotky místa">
+      <div class="note" id="pstat" style="margin-top:8px"></div>
+      <div class="row"><button id="pupload" class="hide" type="button">Nahrát</button><button class="sec hide" id="pcancel" type="button">Zrušit</button></div>
+    </div>
+    <button class="linkbtn" id="madmin" type="button">🔒 Správce</button>
   </div>
 </section>
 
@@ -216,6 +233,7 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec" id="torch" type="button">💡 Baterka</button><button id="shot" type="button">Vyfotit</button></div>
 </div>
 <div id="lb" class="hide"><div id="lbstat"></div><img id="lbimg" alt="Fotka nebo plánek místa"></div>
+<div id="pinov" class="hide"><div class="card"><strong>Správce</strong><div class="note" style="margin:4px 0 10px">Zadej PIN správce.</div><input id="pininput" type="password" inputmode="numeric" autocomplete="off"><div class="warn" id="pinmsg" style="min-height:1.3em;margin:6px 0"></div><div class="row"><button class="sec" id="pincancel" type="button">Zrušit</button><button id="pingo" type="button">Odemknout</button></div></div></div>
 <div id="toast" class="hide"></div>
 <div id="yay" class="hide"><div class="tick">✓</div><b id="yaytext">Odesláno</b><span id="yaysub"></span></div>
 
@@ -228,7 +246,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.17.1';
+const VERSION = '1.18.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -417,6 +435,60 @@ async function showPlace(m) {
 $('lb').onclick = () => $('lb').classList.add('hide');
 $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(current); };
 
+// ================= správce: nahrání fotky místa (PIN) =================
+let adminPin = null, adminUntil = 0, pendingPlace = '';
+const adminOn = () => adminPin && Date.now() < adminUntil;
+function adminLock() { adminPin = null; adminUntil = 0; pendingPlace = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
+function adminError(code) {
+  return code === 'pin' ? 'Špatný PIN.' : code === 'locked' ? 'Příliš mnoho pokusů. Zkus to za 10 minut.' : code === 'nopin' ? 'PIN správce není ve skriptu nastaven (vlastnost ADMIN_PIN).' : code === 'nofolder' ? 'Chybí složka na fotky míst (spusť setup).' : 'Nahrání se nepovedlo. Zkus to prosím znovu.';
+}
+$('madmin').onclick = () => {
+  if (adminOn()) { $('madminpanel').classList.toggle('hide'); return; }
+  $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
+};
+$('pincancel').onclick = () => $('pinov').classList.add('hide');
+$('pingo').onclick = async () => {
+  const pin = $('pininput').value.trim(); if (!pin) return;
+  $('pingo').disabled = true; $('pinmsg').textContent = 'Ověřuji…';
+  try {
+    const r = await post({ token: token(), action: 'adminCheck', pin });
+    if (!r.ok) { $('pinmsg').textContent = adminError(r.error); return; }
+    adminPin = pin; adminUntil = Date.now() + 10 * 60 * 1000;
+    $('pinov').classList.add('hide'); $('madminpanel').classList.remove('hide');
+  } catch (e) { $('pinmsg').textContent = 'Bez připojení nebo chyba serveru.'; }
+  finally { $('pingo').disabled = false; }
+};
+$('pininput').addEventListener('keydown', e => { if (e.key === 'Enter') $('pingo').click(); });
+$('pcamb').onclick = () => $('pcam').click();
+$('pfileb').onclick = () => $('pfile').click();
+// fotka se zmenší (stačí 1400 px na delší straně) a ukáže se náhled
+async function pickPlace(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }), k = Math.min(1, 1400 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const url = cv.toDataURL('image/jpeg', 0.85); pendingPlace = url.split(',')[1];
+    $('ppreview').src = url; $('ppreview').classList.remove('hide');
+    $('pupload').classList.remove('hide'); $('pcancel').classList.remove('hide'); $('pstat').textContent = '';
+  } catch (e) { $('pstat').textContent = 'Fotku se nepodařilo zpracovat.'; }
+}
+$('pcam').onchange = e => { pickPlace(e.target.files[0]); e.target.value = ''; };
+$('pfile').onchange = e => { pickPlace(e.target.files[0]); e.target.value = ''; };
+$('pcancel').onclick = () => { pendingPlace = ''; $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; };
+$('pupload').onclick = async () => {
+  if (!adminOn()) { adminLock(); return toast('Správce se po čase zamkl. Zadej PIN znovu.'); }
+  if (!pendingPlace) return;
+  $('pupload').disabled = true; $('pstat').innerHTML = '<span class="spin sm"></span>Nahrávám…';
+  try {
+    const r = await post({ token: token(), action: 'placeUpload', id: current.id, pin: adminPin, photo: pendingPlace });
+    if (!r.ok) { if (r.error === 'pin' || r.error === 'locked') adminLock(); $('pstat').textContent = adminError(r.error); return; }
+    current.placePhoto = r.name; lsSet('meridla.meters', JSON.stringify(meters));
+    toast('Fotka místa nahrána ✓', 3500); adminLock(); openMeter(current);
+  } catch (e) { $('pstat').textContent = 'Bez připojení nebo chyba serveru.'; }
+  finally { $('pupload').disabled = false; }
+};
+
 // ================= obrazovky =================
 function show(name) {
   ['home', 'meter', 'hist', 'detail'].forEach(n => $(n).classList.toggle('hide', n !== name));
@@ -424,6 +496,7 @@ function show(name) {
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
+  if (!current || current.id !== m.id) adminLock();
   current = m;
   $('micon').textContent = iconFor(m); $('mname').textContent = m.name + ' · ' + idLabel(m);
   $('msub').textContent = [m.building ? bLabel(m.building) : '', m.place, m.typeName].filter(Boolean).join(' · ');
@@ -440,7 +513,7 @@ function openMeter(m) {
   show('meter');
 }
 $('mshot').onclick = () => openCamera();
-$('mback').onclick = () => show('home');
+$('mback').onclick = () => { adminLock(); show('home'); };
 $('hback').onclick = () => show('meter');
 $('mhist').onclick = async () => { $('hname').textContent = current.name + (current.building ? ' · ' + current.building : ''); show('hist'); await loadHist(); };
 
