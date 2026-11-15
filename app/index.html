@@ -194,7 +194,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.12.0';
+const VERSION = '1.12.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -413,17 +413,42 @@ async function openCamera() {
   const sm = document.createElement('small'); sm.textContent = lastInfo(current) + (current.last ? ' (stav ' + fmtNum(current.last.value) + ')' : ''); hint.appendChild(sm);
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    stream = await ensureTorchStream(stream);
     $('video').srcObject = stream; await $('video').play(); $('vf').classList.remove('hide');
-    const caps = (stream.getVideoTracks()[0].getCapabilities && stream.getVideoTracks()[0].getCapabilities()) || {};
+    const caps = trackCaps(stream.getVideoTracks()[0]);
     torchOK = !!caps.torch; $('torch').classList.toggle('na', !torchOK); paintTorch(false);
     // měřidla bývají v tmě: baterka se zapne sama (jde vypnout, volba se pamatuje)
-    if (torchOK && lsGet('meridla.torch') !== 'off') { await new Promise(r => setTimeout(r, 250)); paintTorch(await setTorch(true)); }
+    if (torchOK && lsGet('meridla.torch') !== 'off') { await new Promise(r => setTimeout(r, 250)); const ok = await setTorch(true); paintTorch(ok); if (!ok) toast('Baterku se nepodařilo zapnout. (' + torchErr + ')', 7000); }
+    if (!torchOK) toast('Baterka z appky není dostupná. (' + camInfo(stream.getVideoTracks()[0]) + ')', 7000);
     setTimeout(checkDark, 1200);
   } catch (e) { closeVf(); toast('Foťák se nepodařilo spustit. Povol ho v prohlížeči.'); }
 }
 $('vfclose').onclick = closeVf;
-let torchOK = false;
-async function setTorch(on) { const tr = stream && stream.getVideoTracks()[0]; if (!tr) return false; try { await tr.applyConstraints({ advanced: [{ torch: on }] }); return true; } catch (e) { return false; } }
+let torchOK = false, torchErr = '';
+const trackCaps = tr => { try { return (tr.getCapabilities && tr.getCapabilities()) || {}; } catch (e) { return {}; } };
+const camInfo = tr => { try { return (tr.label || 'kamera') + ' [' + Object.keys(trackCaps(tr)).join(',') + ']'; } catch (e) { return 'kamera'; } };
+// hodně telefonů má víc zadních kamer a baterku hlásí jen jedna; zkusí se postupně všechny
+async function ensureTorchStream(first) {
+  if (trackCaps(first.getVideoTracks()[0]).torch) return first;
+  try {
+    const cur = first.getVideoTracks()[0].getSettings && first.getVideoTracks()[0].getSettings().deviceId;
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput' && d.deviceId && d.deviceId !== cur);
+    first.getTracks().forEach(t => t.stop());
+    for (const d of devs) {
+      let s2; try { s2 = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: d.deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false }); } catch (e) { continue; }
+      if (trackCaps(s2.getVideoTracks()[0]).torch) return s2;
+      s2.getTracks().forEach(t => t.stop());
+    }
+    return await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+  } catch (e) { return first; }
+}
+async function setTorch(on) {
+  const tr = stream && stream.getVideoTracks()[0]; if (!tr) return false;
+  for (const c of [{ advanced: [{ torch: on }] }, { torch: on }]) {
+    try { await tr.applyConstraints(c); torchErr = ''; return true; } catch (e) { torchErr = (e.name || 'chyba') + ': ' + String(e.message || '').slice(0, 80); }
+  }
+  return false;
+}
 function paintTorch(on) { const b = $('torch'); b.classList.toggle('on', on); b.dataset.on = on ? '1' : ''; b.textContent = on ? '💡 Svítí' : '💡 Baterka'; }
 // když je obraz velmi tmavý a baterka je vypnutá, appka na to upozorní
 function checkDark() {
@@ -434,10 +459,10 @@ function checkDark() {
   if (sum / (d.length / 4) < 40 && $('torch').dataset.on !== '1') toast(torchOK ? 'Je tam tma. Zapni 💡 Baterku.' : 'Je tam tma. Posviť si prosím jiným světlem.', 4500);
 }
 $('torch').onclick = async () => {
-  if (!torchOK) return toast('Tenhle telefon nebo prohlížeč neumí z appky zapnout baterku (např. iPhone). Posviť si prosím jiným světlem.', 6000);
+  if (!torchOK) { const tr = stream && stream.getVideoTracks()[0]; return toast('Telefon nehlásí pro tuto kameru baterku. Posviť si prosím jiným světlem. (' + (tr ? camInfo(tr) : 'bez kamery') + ')', 9000); }
   const on = $('torch').dataset.on !== '1';
   if (await setTorch(on)) { paintTorch(on); lsSet('meridla.torch', on ? 'on' : 'off'); }
-  else toast('Baterku se nepodařilo zapnout.');
+  else toast('Baterku se nepodařilo zapnout. (' + torchErr + ')', 8000);
 };
 $('shot').onclick = () => {
   const v = $('video'), vw = v.videoWidth, vh = v.videoHeight, c = v.getBoundingClientRect(), f = $('frame').getBoundingClientRect();
