@@ -22,9 +22,9 @@ function setup() {
   let m = ss.getSheetByName(SHEET_METERS);
   if (!m) {
     m = ss.insertSheet(SHEET_METERS);
-    m.appendRow(['id', 'Název', 'Typ', 'Číslic před čárkou', 'Nápověda pro čtení', 'Jednotka']);
-    m.appendRow(['elektro-kotelna', 'Elektroměr – kotelna', 'digitální', 5, 'Číslice za desetinnou čárkou (červené) ignoruj.', 'kWh']);
-    m.appendRow(['voda-sklep', 'Vodoměr – sklep', 'kolečka', 5, 'Červená kolečka jsou desetiny m³.', 'm³']);
+    m.appendRow(['id', 'Název', 'Typ', 'Číslic před čárkou', 'Nápověda pro čtení', 'Jednotka', 'Budova', 'Interval (dny)']);
+    m.appendRow(['elektro-kotelna', 'Elektroměr – kotelna', 'digitální', 5, 'Číslice za desetinnou čárkou (červené) ignoruj.', 'kWh', 'Kotelna', 7]);
+    m.appendRow(['voda-sklep', 'Vodoměr – sklep', 'kolečka', 5, 'Červená kolečka jsou desetiny m³.', 'm³', '271', 7]);
     m.setFrozenRows(1);
   }
   let r = ss.getSheetByName(SHEET_READINGS);
@@ -41,6 +41,9 @@ function setup() {
     p.setFrozenRows(1);
   }
   if (!r.getRange(1, 10).getValue()) r.getRange(1, 10).setValue('Kdo');
+  if (!r.getRange(1, 11).getValue()) r.getRange(1, 11).setValue('Budova');
+  if (!m.getRange(1, 7).getValue()) m.getRange(1, 7).setValue('Budova');
+  if (!m.getRange(1, 8).getValue()) m.getRange(1, 8).setValue('Interval (dny)');
   if (!props.getProperty('FOLDER_ID')) props.setProperty('FOLDER_ID', DriveApp.createFolder(FOLDER_NAME).getId());
   if (!props.getProperty('TOKEN')) props.setProperty('TOKEN', Utilities.getUuid().replace(/-/g, ''));
   if (!props.getProperty('NOTIFY')) props.setProperty('NOTIFY', Session.getEffectiveUser().getEmail());
@@ -95,12 +98,24 @@ function who_(t) {
 
 function meters_() {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS).getDataRange().getValues();
-  return v.slice(1).filter(r => r[0]).map(r => ({ id: String(r[0]), name: r[1], type: r[2], digits: r[3], hint: r[4], unit: r[5] }));
+  return v.slice(1).filter(r => r[0]).map(r => ({ id: String(r[0]), name: r[1], type: r[2], digits: r[3], hint: r[4], unit: r[5], building: String(r[6] || '').trim(), interval: Number(r[7]) > 0 ? Math.round(Number(r[7])) : 7 }));
 }
 
 function readings_() {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
   return v.slice(1).filter(r => r[0]).map(r => ({ time: new Date(r[0]), id: String(r[1]), value: Number(r[3]), who: String(r[9] || '') }));
+}
+
+// číslo dne (podle časové zóny tabulky), aby se počítaly kalendářní dny
+function dayNum_(d) {
+  const p = Utilities.formatDate(d, SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd').split('-').map(Number);
+  return Math.floor(Date.UTC(p[0], p[1] - 1, p[2]) / 864e5);
+}
+// stav měřidla podle jeho intervalu: due = je čas na odečet
+function dueInfo_(m, last) {
+  if (!last) return { due: true, overdueDays: 0, remainingDays: 0, daysSince: null };
+  const ds = dayNum_(new Date()) - dayNum_(last.time);
+  return { due: ds >= m.interval, overdueDays: Math.max(0, ds - m.interval), remainingDays: Math.max(0, m.interval - ds), daysSince: ds };
 }
 
 // začátek aktuálního týdne (pondělí 0:00 v časové zóně tabulky)
@@ -116,11 +131,12 @@ function weekStart_() {
 function doGet(e) {
   const who = who_(e.parameter.token);
   if (!who) return ok_({ ok: false, error: 'token' });
-  const ws = weekStart_(), all = readings_();
+  const all = readings_();
   const list = meters_().map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
     const last = mine[0];
-    return { ...m, last: last ? { value: last.value, time: last.time.toISOString(), who: last.who } : null, doneThisWeek: !!last && last.time >= ws };
+    const di = dueInfo_(m, last);
+    return { ...m, last: last ? { value: last.value, time: last.time.toISOString(), who: last.who } : null, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due };
   });
   return ok_({ ok: true, who: who, meters: list });
 }
@@ -210,12 +226,12 @@ function doPost(e) {
       const blob = Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', stamp + '_' + meter.id + '.jpg');
       fileUrl = DriveApp.getFolderById(props_().getProperty('FOLDER_ID')).createFile(blob).getUrl();
     }
-    sheet.appendRow([new Date(), meter.id, meter.name, value, prev ? prev.value : '', diff, note, fileUrl, body.source || '', who]);
+    sheet.appendRow([new Date(), meter.id, meter.name, value, prev ? prev.value : '', diff, note, fileUrl, body.source || '', who, meter.building]);
 
     const to = props_().getProperty('NOTIFY');
     if (to) {
       MailApp.sendEmail(to, 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
-        meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
+        (meter.building ? 'Budova: ' + meter.building + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }
@@ -232,8 +248,12 @@ function installReminder() {
   ScriptApp.newTrigger('reminder').timeBased().onWeekDay(ScriptApp.WeekDay.FRIDAY).atHour(9).create();
 }
 function reminder() {
-  const ws = weekStart_(), all = readings_();
-  const missing = meters_().filter(m => !all.some(x => x.id === m.id && x.time >= ws)).map(m => m.name);
+  const all = readings_(), lines = [];
+  meters_().forEach(m => {
+    const last = all.filter(x => x.id === m.id).sort((x, y) => y.time - x.time)[0];
+    const di = dueInfo_(m, last);
+    if (di.due) lines.push((m.building ? m.building + ': ' : '') + m.name + (last ? (di.overdueDays ? ' (po termínu ' + di.overdueDays + ' d)' : ' (dnes je termín)') : ' (zatím bez odečtu)'));
+  });
   const to = props_().getProperty('NOTIFY');
-  if (missing.length && to) MailApp.sendEmail(to, 'Chybí odečty měřidel', 'Tento týden zatím chybí:\n- ' + missing.join('\n- '));
+  if (lines.length && to) MailApp.sendEmail(to, 'Chybí odečty měřidel (' + lines.length + ')', 'K odečtu je:\n- ' + lines.join('\n- '));
 }

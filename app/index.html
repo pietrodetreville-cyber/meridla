@@ -24,7 +24,7 @@ button.sec{background:transparent;color:var(--fg);border:1px solid var(--line)}
 button.big{width:100%;padding:16px;font-size:1.1rem}
 .meter{display:flex;align-items:center;gap:12px;width:100%;text-align:left;background:var(--card);color:var(--fg);border:1px solid var(--line);padding:14px;margin-bottom:10px;border-radius:14px}
 .meter .t{flex:1}.meter b{display:block;font-size:1.05rem}
-.meter .s{font-size:.85rem;color:var(--mut)}
+.meter .s{display:block;font-size:.85rem;color:var(--mut)}
 .chip{font-size:.8rem;font-weight:700;padding:4px 10px;border-radius:999px;white-space:nowrap}
 .chip.ok{background:var(--ok);color:var(--acc-fg)}
 .chip.todo{background:transparent;color:var(--warn);border:1px solid var(--warn)}
@@ -36,6 +36,13 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.bchips{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 10px;margin:0 -2px 4px;scrollbar-width:none}
+.bchips::-webkit-scrollbar{display:none}
+.bchip{flex:none;display:inline-flex;align-items:center;gap:6px;padding:9px 14px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--fg);font-weight:700}
+.bchip.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
+.bchip i{font-style:normal;font-size:.75rem;min-width:20px;height:20px;padding:0 5px;border-radius:999px;display:inline-grid;place-items:center;background:var(--warn);color:#fff}
+.tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 7px;margin-right:6px;border-radius:6px;background:#7fb6f244;color:var(--fg);vertical-align:1px}
+.chip.late{background:var(--warn);color:#fff}
 .hero{position:relative;overflow:hidden;border-radius:18px;padding:18px 16px 16px;margin-bottom:14px;color:#06312a;background:linear-gradient(135deg,#7ae6c6 0%,#4fd1ac 45%,#7fb6f2 100%);box-shadow:0 6px 18px #4fd1ac55}
 .hero:after{content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:#ffffff40}
 .hero .hi{font-size:1.05rem;font-weight:700}
@@ -73,6 +80,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <body>
 <main>
 <div class="brand"><img src="icon.svg" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1></div>
+<div class="bchips hide" id="bchips"></div>
 <div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong>Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
@@ -111,7 +119,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 <script>
 // ================= nastavení =================
 const ENDPOINT = 'https://script.google.com/macros/s/AKfycbyx3UjK_0rqmvNLEMBZPWUpW4dcsu8N3Ovxy3eNb5d4YVUj1zM64mrr8xvn3_uQigSI/exec';
-const VERSION = '1.3.0';
+const VERSION = '1.4.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} };
@@ -165,10 +173,48 @@ window.addEventListener('online', flushQueue);
 // ================= seznam měřidel =================
 let meters = [], current = null;
 const iconFor = m => { const n = (m.name + ' ' + (m.unit || '')).toLowerCase(); return /elektr|kwh/.test(n) ? '⚡' : /vod|m³/.test(n) && !/plyn/.test(n) ? '💧' : /plyn/.test(n) ? '🔥' : /tepl|kalor|gj|mwh/.test(n) ? '🌡️' : '📟'; };
+const isDue = m => m.due !== undefined ? m.due : !m.doneThisWeek;
+const plural = (n, a, b, c) => n === 1 ? a : n >= 2 && n <= 4 ? b : c;
+const days = n => n + ' ' + plural(n, 'den', 'dny', 'dní');
+const bOf = m => m.building || 'Ostatní';
+let building = lsGet('meridla.building') || '';
+function buildingList() {
+  const set = []; meters.forEach(m => { const b = bOf(m); if (!set.includes(b)) set.push(b); });
+  const num = b => /^\d+$/.test(b);
+  return set.sort((a, b) => num(a) && num(b) ? a - b : num(a) ? -1 : num(b) ? 1 : a.localeCompare(b, 'cs'));
+}
+const visible = () => building ? meters.filter(m => bOf(m) === building) : meters;
+function renderChips() {
+  const bs = buildingList(), box = $('bchips');
+  if (bs.length < 2) { box.classList.add('hide'); building = ''; return; }
+  if (building && !bs.includes(building)) building = '';
+  const badge = list => { const n = list.filter(isDue).length; return n ? '<i>' + n + '</i>' : ''; };
+  box.innerHTML = '<button class="bchip' + (building ? '' : ' on') + '" data-b="">Vše' + badge(meters) + '</button>' +
+    bs.map(b => '<button class="bchip' + (building === b ? ' on' : '') + '" data-b="' + b.replace(/"/g, '') + '">' + b.replace(/</g, '&lt;') + badge(meters.filter(m => bOf(m) === b)) + '</button>').join('');
+  box.classList.remove('hide');
+}
+$('bchips').addEventListener('click', e => {
+  const b = e.target.closest('.bchip'); if (!b) return;
+  building = b.dataset.b; lsSet('meridla.building', building); renderAll();
+});
 function renderProgress() {
-  const total = meters.length, done = meters.filter(m => m.doneThisWeek).length;
-  $('progress').textContent = !total ? 'Zatím žádná měřidla' : done === total ? 'Tento týden máte hotovo 🎉' : 'Hotovo ' + done + ' z ' + total + ' měřidel';
+  const list = visible(), total = list.length, due = list.filter(isDue).length, done = total - due;
+  $('progress').textContent = !total ? 'Zatím žádná měřidla' : !due ? (building ? 'Budova ' + building + ': vše hotovo 🎉' : 'Vše je hotovo 🎉') : 'K odečtu: ' + due + ' z ' + total;
   $('barfill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
+}
+function chipFor(m) {
+  if (!isDue(m)) return '<span class="chip ok">✓ hotovo</span>';
+  if (!m.last) return '<span class="chip todo">chybí</span>';
+  return m.overdueDays ? '<span class="chip late">po termínu ' + days(m.overdueDays) + '</span>' : '<span class="chip todo">je čas</span>';
+}
+function renderAll() {
+  renderChips(); renderProgress();
+  const list = visible().slice().sort((a, b) => (isDue(b) - isDue(a)) || ((b.overdueDays || 0) - (a.overdueDays || 0)));
+  $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
+    '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + (!building && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + '</b>' +
+    '<span class="s">' + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
+    '<span class="s">' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span></span>' +
+    chipFor(m) + '</button>').join('');
 }
 async function loadList() {
   if (!token()) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Chybí tajný kód. Otevři appku přes odkaz, který ti poslali.</span>'; return; }
@@ -181,10 +227,7 @@ async function loadList() {
     try { meters = JSON.parse(lsGet('meridla.meters') || '[]'); } catch (e2) { meters = []; }
     $('homenote').textContent = meters.length ? 'Bez připojení: zobrazen poslední známý seznam.' : 'Nelze načíst seznam, zkontroluj připojení.';
   }
-  renderProgress();
-  $('list').innerHTML = meters.map((m, i) => `<button class="meter${m.doneThisWeek ? ' done' : ''}" data-id="${m.id}" style="animation-delay:${i * 70}ms">
-    <span class="ico">${iconFor(m)}</span><span class="t"><b>${m.name.replace(/</g, '&lt;')}</b><span class="s">${m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu'}</span></span>
-    <span class="chip ${m.doneThisWeek ? 'ok' : 'todo'}">${m.doneThisWeek ? '✓ hotovo' : 'chybí'}</span></button>`).join('');
+  renderAll();
 }
 $('reload').onclick = loadList;
 $('list').addEventListener('click', e => {
