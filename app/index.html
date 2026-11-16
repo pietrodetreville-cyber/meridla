@@ -49,6 +49,8 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+.sep{border:0;border-top:1px solid var(--line);margin:14px 0 10px}
+#bflog{margin-top:8px;line-height:1.5}
 .linkbtn{display:block;margin:12px auto 0;background:transparent;color:var(--mut);padding:8px 12px;font-weight:500;font-size:.85rem}
 #pinov{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
 #pinov.hide{display:none}
@@ -193,6 +195,15 @@ html:has(#splash:not(.out)){overflow:hidden}
       <img id="ppreview" class="hide" alt="Náhled nové fotky místa">
       <div class="note" id="pstat" style="margin-top:8px"></div>
       <div class="row"><button id="pupload" class="hide" type="button">Nahrát</button><button class="sec hide" id="pcancel" type="button">Zrušit</button></div>
+      <hr class="sep">
+      <b>Správce · zpětný záznam z papíru</b>
+      <div class="note" style="margin:4px 0 6px">Doplní odečet <b>bez fotky</b> k vybranému datu, třeba ze starých papírových záznamů. Dá se zapsat víc záznamů po sobě.</div>
+      <div class="row" style="margin-top:6px"><div><label for="bfdate">Datum</label><input id="bfdate" type="date"></div><div><label for="bftime">Čas</label><input id="bftime" type="time" value="12:00"></div></div>
+      <label for="bfval" id="bflabel">Stav měřidla</label><input id="bfval" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 12345,6">
+      <label for="bfnote">Poznámka (nepovinná)</label><input id="bfnote" type="text" autocomplete="off" placeholder="např. z papírového sešitu">
+      <div class="note warn" id="bfstat" style="margin-top:6px;min-height:1.2em"></div>
+      <div class="row"><button id="bfsave" type="button">Zapsat záznam</button></div>
+      <div class="note" id="bflog"></div>
     </div>
     <button class="linkbtn" id="madmin" type="button">🔒 Správce</button>
   </div>
@@ -246,7 +257,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.19.0';
+const VERSION = '1.20.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -438,12 +449,12 @@ $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(curre
 // ================= správce: nahrání fotky místa (PIN) =================
 let adminPin = null, adminUntil = 0, pendingPlace = '';
 const adminOn = () => adminPin && Date.now() < adminUntil;
-function adminLock() { adminPin = null; adminUntil = 0; pendingPlace = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
+function adminLock() { adminPin = null; adminUntil = 0; pendingPlace = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
 function adminError(code) {
   return code === 'pin' ? 'Špatný PIN.' : code === 'locked' ? 'Příliš mnoho pokusů. Zkus to za 10 minut.' : code === 'nopin' ? 'PIN správce není ve skriptu nastaven (vlastnost ADMIN_PIN).' : code === 'nofolder' ? 'Chybí složka na fotky míst (spusť setup).' : 'Nahrání se nepovedlo. Zkus to prosím znovu.';
 }
 $('madmin').onclick = () => {
-  if (adminOn()) { $('madminpanel').classList.toggle('hide'); return; }
+  if (adminOn()) { $('madminpanel').classList.toggle('hide'); bfInit(); return; }
   $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
 };
 $('pincancel').onclick = () => $('pinov').classList.add('hide');
@@ -454,11 +465,47 @@ $('pingo').onclick = async () => {
     const r = await post({ token: token(), action: 'adminCheck', pin });
     if (!r.ok) { $('pinmsg').textContent = adminError(r.error); return; }
     adminPin = pin; adminUntil = Date.now() + 10 * 60 * 1000;
-    $('pinov').classList.add('hide'); $('madminpanel').classList.remove('hide');
+    $('pinov').classList.add('hide'); $('madminpanel').classList.remove('hide'); bfInit();
   } catch (e) { $('pinmsg').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('pingo').disabled = false; }
 };
 $('pininput').addEventListener('keydown', e => { if (e.key === 'Enter') $('pingo').click(); });
+// ---- zpětný záznam z papíru ----
+function bfInit() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  $('bfdate').max = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+  $('bflabel').textContent = 'Stav měřidla · ' + (current ? decText(decOf(current)) : '');
+}
+let bfLog = [];
+async function bfSend(force) {
+  const date = $('bfdate').value, time = $('bftime').value || '12:00';
+  const value = roundTo(parseNum($('bfval').value), decOf(current));
+  $('bfsave').disabled = true; $('bfstat').innerHTML = '<span class="spin sm"></span>Zapisuji…';
+  try {
+    const r = await post({ token: token(), action: 'backfill', id: current.id, pin: adminPin, when: date + 'T' + time, value, note: $('bfnote').value.trim(), force: !!force });
+    if (!r.ok) {
+      if (r.error === 'dup') { $('bfstat').textContent = ''; if (confirm('Pro toto datum už existuje záznam se stejným stavem. Zapsat i tak?')) return bfSend(true); return; }
+      if (r.error === 'pin' || r.error === 'locked') { adminLock(); $('bfstat').textContent = ''; return toast(adminError(r.error)); }
+      $('bfstat').textContent = r.error === 'future' ? 'Datum nesmí být v budoucnosti.' : r.error === 'date' ? 'Neplatné datum nebo čas.' : r.error === 'data' ? 'Zkontroluj datum a stav.' : 'Zápis se nepovedl. Zkus to prosím znovu.';
+      return;
+    }
+    adminUntil = Date.now() + 10 * 60 * 1000;
+    const dd = new Date(date + 'T' + time);
+    bfLog.unshift('✓ ' + dd.getDate() + '. ' + (dd.getMonth() + 1) + '. ' + dd.getFullYear() + ' · ' + fmtNum(value) + ' ' + (current.unit || '') + (r.warn ? ' (nižší než předchozí)' : ''));
+    $('bflog').innerHTML = 'Zapsáno v tomto okně:<br>' + bfLog.slice(0, 8).join('<br>');
+    $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('bfval').focus();
+    toast(r.warn ? 'Zapsáno. Pozor: stav je nižší než předchozí záznam v tom čase.' : 'Záznam zapsán ✓', 3500);
+    const id = current.id; await loadList(); current = meters.find(m => m.id === id) || current; openMeter(current);
+  } catch (e) { $('bfstat').textContent = 'Bez připojení nebo chyba serveru.'; }
+  finally { $('bfsave').disabled = false; }
+}
+$('bfsave').onclick = () => {
+  if (!adminOn()) { adminLock(); return toast('Správce se po čase zamkl. Zadej PIN znovu.'); }
+  if (!$('bfdate').value) return ($('bfstat').textContent = 'Vyber datum.');
+  if ($('bfval').value.trim() === '' || !isFinite(parseNum($('bfval').value))) return ($('bfstat').textContent = 'Zadej stav měřidla.');
+  if (new Date($('bfdate').value + 'T' + ($('bftime').value || '12:00')) > new Date()) return ($('bfstat').textContent = 'Datum nesmí být v budoucnosti.');
+  $('bfstat').textContent = ''; bfSend(false);
+};
 $('pcamb').onclick = () => $('pcam').click();
 $('pfileb').onclick = () => $('pfile').click();
 // fotka se zmenší (stačí 1400 px na delší straně) a ukáže se náhled

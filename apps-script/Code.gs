@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.18.1';
+const SCRIPT_VERSION = '1.19.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -257,9 +257,9 @@ function meters_() {
 
 function readings_() {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
-  return v.slice(1).filter(r => r[0]).map(r => {
-    const has = r[3] !== '' && r[3] !== null && isFinite(Number(r[3]));
-    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || '') };
+  return v.slice(1).map((r, i) => ({ r: r, row: i + 2 })).filter(o => o.r[0]).map(o => {
+    const r = o.r, has = r[3] !== '' && r[3] !== null && isFinite(Number(r[3]));
+    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row };
   });
 }
 
@@ -377,6 +377,7 @@ function doPost(e) {
   if (body.action === 'read') return ok_(readWithAi_(meters_().find(m => m.id === body.id), body.photo));
   if (body.action === 'adminCheck') return ok_(adminCheck_(body.pin));
   if (body.action === 'placeUpload') return ok_(placeUpload_(body));
+  if (body.action === 'backfill') return ok_(backfill_(body, who));
 
   const meter = meters_().find(m => m.id === body.id);
   const noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
@@ -561,6 +562,42 @@ function placeUpload_(body) {
     if (col < 0) { col = head.findIndex(x => String(x).trim() === ''); if (col < 0) col = head.length; sh.getRange(1, col + 1).setValue('Fotka_místa'); }
     sh.getRange(meter.row, col + 1).setValue(name);
     return { ok: true, name: name };
+  } finally {
+    lock.releaseLock();
+  }
+}
+
+// Zpětný záznam bez fotky (stavy z papírových záznamů). Jen správce s PINem.
+// Zapíše se k vybranému datu; předchozí stav a přírůstek se dopočítají podle času a upraví se i následující záznam.
+function backfill_(body, who) {
+  const chk = adminCheck_(body.pin);
+  if (!chk.ok) return chk;
+  const meter = meters_().find(m => m.id === body.id);
+  const raw = String(body.value === undefined || body.value === null ? '' : body.value).replace(',', '.').trim();
+  const value = meter && raw !== '' ? round_(Number(raw), meter.decimals) : NaN;
+  if (!meter || !isFinite(value)) return { ok: false, error: 'data' };
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  let when;
+  try { when = Utilities.parseDate(String(body.when), tz, "yyyy-MM-dd'T'HH:mm"); } catch (e) { return { ok: false, error: 'date' }; }
+  if (!(when.getFullYear() >= 2000)) return { ok: false, error: 'date' };
+  if (when.getTime() > Date.now() + 3600000) return { ok: false, error: 'future' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(20000);
+  try {
+    const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS);
+    const all = readings_().filter(x => x.id === meter.id && x.has).sort((x, y) => x.time - y.time);
+    if (!body.force && all.some(x => dayNum_(x.time) === dayNum_(when) && x.value === value)) return { ok: false, error: 'dup' };
+    const before = all.filter(x => x.time < when), prev = before.length ? before[before.length - 1] : null;
+    const next = all.find(x => x.time > when);
+    const diff = prev ? Math.round((value - prev.value) * 1000) / 1000 : '';
+    let note = String(body.note || '').slice(0, 200);
+    if (prev && value < prev.value) note = ('POZOR: nižší než předchozí záznam. ' + note).trim();
+    note = (note + ' Zpětně doplněno správcem.').trim();
+    const rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
+    sheet.appendRow([when, meter.id, meter.name, value, prev ? prev.value : '', diff, note, '', 'doplněno zpětně (papír)', who, meter.building, '', rid]);
+    // následující záznam má nový předchozí stav
+    if (next && next.row) { sheet.getRange(next.row, 5).setValue(value); sheet.getRange(next.row, 6).setValue(Math.round((next.value - value) * 1000) / 1000); }
+    return { ok: true, diff: diff, warn: !!(prev && value < prev.value) };
   } finally {
     lock.releaseLock();
   }
