@@ -49,6 +49,9 @@ input.num{font-size:1.8rem;font-weight:700;text-align:center}
 img.shot{width:100%;border-radius:10px;display:block}
 .row{display:flex;gap:10px;margin-top:12px}.row>*{flex:1}
 .hide{display:none}
+#apreview{width:100%;max-height:260px;object-fit:contain;border-radius:10px;margin-top:10px;background:#0002}
+#apreview.hide{display:none}
+#aresult{margin-top:8px;line-height:1.5}
 .pnav{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
 .pnav button{flex:none;padding:8px 16px}
 .pnav button:disabled{opacity:.3;cursor:default}
@@ -182,6 +185,17 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div id="list"></div>
   <p class="note" id="homenote"></p>
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
+  <button class="linkbtn" id="hadmin" type="button">🔒 Správce</button>
+  <div id="hadminpanel" class="card hide">
+    <b>Správce · papírový záznam</b>
+    <div class="note" style="margin:4px 0 8px">Vyfoť papírový arch s hodnotami. Fotka se uloží na Disk a AI z ní přepíše hodnoty do listu „Import z papíru" v tabulce, kde je zkontroluješ a zapíšeš.</div>
+    <div class="row"><button class="sec" id="acamb" type="button">📷 Vyfotit arch</button><button class="sec" id="afileb" type="button">🖼️ Z galerie</button></div>
+    <input id="acam" type="file" accept="image/*" capture="environment" class="hide"><input id="afile" type="file" accept="image/*" class="hide">
+    <img id="apreview" class="hide" alt="Náhled archu">
+    <div class="note" id="astat" style="margin-top:8px"></div>
+    <div class="row"><button id="aupload" class="hide" type="button">Uložit a přepsat</button><button class="sec hide" id="acancel" type="button">Zrušit</button></div>
+    <div class="note" id="aresult"></div>
+  </div>
 </section>
 
 <section id="meter" class="hide">
@@ -264,7 +278,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.22.2';
+const VERSION = '1.23.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -454,13 +468,14 @@ $('lb').onclick = () => $('lb').classList.add('hide');
 $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(current); };
 
 // ================= správce: nahrání fotky místa (PIN) =================
-let adminPin = null, adminUntil = 0, pendingPlace = '';
+let adminPin = null, adminUntil = 0, pendingPlace = '', pinFor = 'meter', pendingArch = '';
 const adminOn = () => adminPin && Date.now() < adminUntil;
-function adminLock() { adminPin = null; adminUntil = 0; pendingPlace = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
+function adminLock() { adminPin = null; adminUntil = 0; pendingPlace = ''; pendingArch = ''; $('hadminpanel').classList.add('hide'); $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; $('aresult').textContent = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
 function adminError(code) {
-  return code === 'pin' ? 'Špatný PIN.' : code === 'locked' ? 'Příliš mnoho pokusů. Zkus to za 10 minut.' : code === 'nopin' ? 'PIN správce není ve skriptu nastaven (vlastnost ADMIN_PIN).' : code === 'nofolder' ? 'Chybí složka na fotky míst (spusť setup).' : 'Nahrání se nepovedlo. Zkus to prosím znovu.';
+  return code === 'pin' ? 'Špatný PIN.' : code === 'locked' ? 'Příliš mnoho pokusů. Zkus to za 10 minut.' : code === 'nopin' ? 'PIN správce není ve skriptu nastaven (vlastnost ADMIN_PIN).' : code === 'drive' ? 'Fotku se nepodařilo uložit na Disk.' : code === 'nofolder' ? 'Chybí složka na fotky míst (spusť setup).' : 'Nahrání se nepovedlo. Zkus to prosím znovu.';
 }
 $('madmin').onclick = () => {
+  pinFor = 'meter';
   if (adminOn()) { $('madminpanel').classList.toggle('hide'); bfInit(); return; }
   $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
 };
@@ -472,11 +487,53 @@ $('pingo').onclick = async () => {
     const r = await post({ token: token(), action: 'adminCheck', pin });
     if (!r.ok) { $('pinmsg').textContent = adminError(r.error); return; }
     adminPin = pin; adminUntil = Date.now() + 10 * 60 * 1000;
-    $('pinov').classList.add('hide'); $('madminpanel').classList.remove('hide'); bfInit();
+    $('pinov').classList.add('hide'); if (pinFor === 'home') $('hadminpanel').classList.remove('hide'); else { $('madminpanel').classList.remove('hide'); bfInit(); }
   } catch (e) { $('pinmsg').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('pingo').disabled = false; }
 };
 $('pininput').addEventListener('keydown', e => { if (e.key === 'Enter') $('pingo').click(); });
+// ---- foto papírového archu: uložení na Disk + AI přepis do listu Import z papíru ----
+$('hadmin').onclick = () => {
+  pinFor = 'home';
+  if (adminOn()) { $('hadminpanel').classList.toggle('hide'); return; }
+  $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
+};
+// arch se zmenší na 2000 px na delší straně (aby šla číst ručně psaná čísla)
+async function pickArch(file) {
+  if (!file) return;
+  try {
+    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }), k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height));
+    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+    const url = cv.toDataURL('image/jpeg', 0.9); pendingArch = url.split(',')[1];
+    $('apreview').src = url; $('apreview').classList.remove('hide');
+    $('aupload').classList.remove('hide'); $('acancel').classList.remove('hide'); $('astat').textContent = ''; $('aresult').textContent = '';
+  } catch (e) { $('astat').textContent = 'Fotku se nepodařilo zpracovat.'; }
+}
+$('acamb').onclick = () => $('acam').click();
+$('afileb').onclick = () => $('afile').click();
+$('acam').onchange = e => { pickArch(e.target.files[0]); e.target.value = ''; };
+$('afile').onchange = e => { pickArch(e.target.files[0]); e.target.value = ''; };
+$('acancel').onclick = () => { pendingArch = ''; $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; };
+const ymdCz = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? (+m[3]) + '. ' + (+m[2]) + '. ' + m[1] : 'datum?'; };
+$('aupload').onclick = async () => {
+  if (!adminOn()) { adminLock(); return toast('Správce se po čase zamkl. Zadej PIN znovu.'); }
+  if (!pendingArch) return;
+  $('aupload').disabled = true; $('aresult').textContent = '';
+  $('astat').innerHTML = '<span class="spin sm"></span>Ukládám a čtu hodnoty z archu… (může trvat až půl minuty)';
+  try {
+    const r = await post({ token: token(), action: 'paperUpload', pin: adminPin, photo: pendingArch });
+    if (!r.ok) { if (r.error === 'pin' || r.error === 'locked') adminLock(); $('astat').textContent = adminError(r.error); return; }
+    adminUntil = Date.now() + 10 * 60 * 1000;
+    pendingArch = ''; $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide');
+    if (r.aiError || !r.count) { $('astat').textContent = 'Fotka je uložená (' + r.name + '), ale AI z ní hodnoty nepřečetla. Přepiš je ručně do listu „Import z papíru“ v tabulce.'; return; }
+    $('astat').textContent = 'Uloženo (' + r.name + '). AI přepsala ' + r.count + ' hodnot do listu „Import z papíru“. Zkontroluj je a oprav v tabulce, pak v menu Měřidla → Import z papíru zvol Náhled a Zapsat hodnoty.';
+    $('aresult').innerHTML = (r.rows || []).slice(0, 40).map(x => '✓ ' + ymdCz(x.datum) + ' · ' + (x.budova || '?') + ' ' + (x.druh || '') + (x.cislo ? ' ' + x.cislo : '') + ' = ' + fmtNum(x.stav)).join('<br>');
+    toast('Arch přepsán, zkontroluj list Import z papíru', 5000);
+  } catch (e) { $('astat').textContent = 'Bez připojení nebo chyba serveru.'; }
+  finally { $('aupload').disabled = false; }
+};
+
 // ---- zpětný záznam z papíru ----
 function bfInit() {
   const d = new Date(), p = n => String(n).padStart(2, '0');

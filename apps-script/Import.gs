@@ -1,54 +1,171 @@
-// Jednorázový import stavů z papírového záznamu k 30. 9. 2026 (č. p. 271–275).
-// Zapisuje JEN hodnoty k měřidlům, která už jsou v listu Měřidla. Nová měřidla nezakládá, chybějící vypíše.
-// Vodoměry se přiřazují podle budovy (v každé je jeden), elektroměry podle čísla. Opakované spuštění nic nezdvojí.
-// Po použití se tento soubor ze skriptu odstraní.
-const PAPER_WHEN = '2026-09-30 12:00';
-const PAPER_NOTE = 'Stav z papírového záznamu k 30. 9. 2026.';
-const PAPER_ITEMS = [
-  // [budova, druh, číslo elektroměru ('' u vodoměru), stav]
-  ['275', 'Vodoměr', '', 219],        ['275', 'Elektroměr', 'W060073', 1900.6], ['275', 'Elektroměr', 'T698532', 535.7],
-  ['274', 'Vodoměr', '', 1230],       ['274', 'Elektroměr', 'W033731', 6563.2], ['274', 'Elektroměr', 'W035443', 139.6],
-  ['273', 'Vodoměr', '', 287],        ['273', 'Elektroměr', 'W035442', 6480.8], ['273', 'Elektroměr', 'T698239', 1044.2],
-  ['272', 'Vodoměr', '', 273],        ['272', 'Elektroměr', 'W035424', 2795.7], ['272', 'Elektroměr', 'W032185', 192.6],
-  ['271', 'Vodoměr', '', 1524],       ['271', 'Elektroměr', 'T751277', 2761.9], ['271', 'Elektroměr', 'T583695', 80540.0]
-];
+// ---------- Import hodnot z papírových archů ----------
+// List „Import z papíru": Datum | Budova | Druh | Číslo měřidla | Stav | Poznámka | Fotka archu | Stav importu | Měřidlo (id)
+// 1) hodnoty se do listu vloží ručně, nebo je z vyfocené stránky přepíše AI (správce, v appce),
+// 2) menu Měřidla → Import z papíru → Náhled (nic nezapisuje) zkontroluje přiřazení k měřidlům,
+// 3) menu … → Zapsat hodnoty je zapíše jako zpětné záznamy (opakované spuštění nic nezdvojí).
 
-const paperKey_ = x => String(x).toLowerCase().replace(/[^a-z0-9]/g, '');
+const SHEET_IMPORT = 'Import z papíru';
+const IMPORT_HEAD = ['Datum', 'Budova', 'Druh', 'Číslo měřidla', 'Stav', 'Poznámka', 'Fotka archu', 'Stav importu', 'Měřidlo (id)'];
+const PAPER_FOLDER = 'Papírové záznamy';
 
-// najde měřidlo v tabulce: elektroměr podle čísla, vodoměr podle budovy
-function paperMeter_(it, meters) {
-  if (it[2]) return { m: meters.find(m => paperKey_(m.id) === paperKey_(it[2])) || null };
-  const c = meters.filter(m => String(m.building).toLowerCase() === String(it[0]).toLowerCase() && String(m.typeName).toLowerCase() === String(it[1]).toLowerCase());
-  return c.length === 1 ? { m: c[0] } : { m: null, why: c.length ? 'v budově je víc měřidel tohoto druhu' : '' };
+const paperKey_ = x => String(x === undefined || x === null ? '' : x).toLowerCase().replace(/[^a-z0-9]/g, '');
+
+function ensureImportSheet_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(SHEET_IMPORT);
+  if (!sh) { sh = ss.insertSheet(SHEET_IMPORT); sh.appendRow(IMPORT_HEAD); sh.setFrozenRows(1); }
+  return sh;
 }
 
-function paperRun_(write) {
-  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
-  const when = Utilities.parseDate(PAPER_WHEN, tz, 'yyyy-MM-dd HH:mm');
-  const meters = meters_(), out = [], missing = [];
-  let wrote = 0, dup = 0;
+// sjednocení názvu druhu (voda, vodoměr, plyn …)
+function normType_(t) {
+  const x = String(t || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+  if (!x) return '';
+  if (/^vod/.test(x)) return /tuv/.test(x) ? 'TUV' : 'Vodoměr';
+  if (/^tuv/.test(x)) return 'TUV';
+  if (/^plyn/.test(x)) return 'Plynoměr';
+  if (/^elek/.test(x) || x === 'el') return 'Elektroměr';
+  if (/^kalor/.test(x)) return 'Kalorimetr';
+  return String(t).trim();
+}
+
+// datum z buňky: skutečné datum, nebo text 30.9.2026 / 30. 9. 2026 / 2026-09-30; čas se nastaví na 12:00
+function parseImportDate_(v, tz) {
+  let ymd = '';
+  if (Object.prototype.toString.call(v) === '[object Date]' && !isNaN(v.getTime())) ymd = Utilities.formatDate(v, tz, 'yyyy-MM-dd');
+  else {
+    const t = String(v === undefined || v === null ? '' : v).trim();
+    let m = t.match(/^(\d{1,2})\s*[.\/-]\s*(\d{1,2})\s*[.\/-]\s*(\d{4})/);
+    if (m) ymd = m[3] + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2);
+    else { m = t.match(/^(\d{4})-(\d{2})-(\d{2})/); if (m) ymd = m[1] + '-' + m[2] + '-' + m[3]; }
+  }
+  if (!ymd) return null;
+  try {
+    const d = Utilities.parseDate(ymd + ' 12:00', tz, 'yyyy-MM-dd HH:mm');
+    return Utilities.formatDate(d, tz, 'yyyy-MM-dd') === ymd && d.getFullYear() >= 2000 ? d : null;
+  } catch (e) { return null; }
+}
+
+// najde měřidlo: podle čísla, jinak podle budovy a druhu (musí být právě jedno)
+function importMeter_(r, meters) {
+  const num = paperKey_(r.cislo);
+  if (num) {
+    const m = meters.find(x => paperKey_(x.id) === num);
+    return m ? { m: m } : { err: 'měřidlo s číslem „' + r.cislo + '“ není v listu Měřidla' };
+  }
+  const typ = normType_(r.druh), b = String(r.budova || '').toLowerCase().trim();
+  if (!b || !typ) return { err: 'chybí číslo měřidla, nebo budova a druh' };
+  const c = meters.filter(x => String(x.building).toLowerCase() === b && String(x.typeName).toLowerCase() === typ.toLowerCase());
+  if (c.length === 1) return { m: c[0] };
+  return { err: c.length ? 'v budově je víc měřidel tohoto druhu, doplň číslo měřidla' : 'v budově ' + r.budova + ' není měřidlo druhu ' + typ };
+}
+
+function importRun_(write) {
+  const sh = ensureImportSheet_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  const data = sh.getDataRange().getValues();
+  const say = t => { try { SpreadsheetApp.getActive().toast(t, write ? 'Import hotov' : 'Náhled hotov', 20); } catch (e) {} };
+  if (data.length < 2) { Logger.log('List „' + SHEET_IMPORT + '“ je prázdný.'); say('List je prázdný.'); return; }
+  const head = data[0].map(h => String(h).normalize('NFC').trim().toLowerCase());
+  const find = n => head.indexOf(n);
+  const c = { date: find('datum'), b: find('budova'), t: find('druh'), n: find('číslo měřidla'), v: find('stav'), note: find('poznámka'), photo: find('fotka archu'), st: find('stav importu'), id: find('měřidlo (id)') };
+  if (c.date < 0 || c.v < 0) { Logger.log('V listu chybí sloupec Datum nebo Stav.'); say('V listu chybí sloupec Datum nebo Stav.'); return; }
+  if (c.st < 0) { c.st = head.length; head.push('stav importu'); sh.getRange(1, c.st + 1).setValue('Stav importu'); }
+  if (c.id < 0) { c.id = head.length; head.push('měřidlo (id)'); sh.getRange(1, c.id + 1).setValue('Měřidlo (id)'); }
+  const meters = meters_(), cnt = { ok: 0, wrote: 0, dup: 0, err: 0, skip: 0 };
   const lock = LockService.getScriptLock();
   if (write) lock.waitLock(30000);
   try {
-    PAPER_ITEMS.forEach(it => {
-      const f = paperMeter_(it, meters), label = it[0] + ' ' + it[1] + (it[2] ? ' ' + it[2] : '');
-      if (!f.m) { missing.push(label + (f.why ? ' (' + f.why + ')' : '')); out.push('CHYBÍ   ' + label + ' = ' + it[3] + (f.why ? '  [' + f.why + ']' : '')); return; }
-      const value = round_(it[3], f.m.decimals);
-      if (!write) { out.push('ZAPÍŠE  ' + label + ' → id ' + f.m.id + ' (' + f.m.name + ') = ' + value); return; }
-      const r = backfillCore_(f.m, when, value, PAPER_NOTE, 'Správce', false);
-      if (r.ok) { wrote++; out.push('ZAPSÁNO ' + label + ' → id ' + f.m.id + ' = ' + value + (r.warn ? ' (nižší než předchozí!)' : '')); }
-      else if (r.error === 'dup') { dup++; out.push('PŘESKOČENO (už zapsáno) ' + label + ' → id ' + f.m.id); }
-      else { missing.push(label + ' (' + r.error + ')'); out.push('CHYBA   ' + label); }
-    });
+    for (let i = 1; i < data.length; i++) {
+      const r = data[i], rowNo = i + 1, cell = k => (c[k] >= 0 && r[c[k]] !== undefined ? r[c[k]] : '');
+      if (/^ZAPSÁNO/.test(String(cell('st')))) { cnt.skip++; continue; }
+      const raw = String(cell('v')).trim();
+      if (raw === '' && String(cell('date')).trim() === '' && String(cell('n')).trim() === '' && String(cell('b')).trim() === '') continue;
+      const when = parseImportDate_(cell('date'), tz), value = raw === '' ? NaN : Number(raw.replace(/\s/g, '').replace(',', '.'));
+      let msg, mid = '';
+      if (!when) msg = 'CHYBA: chybí nebo neplatné datum';
+      else if (when.getTime() > Date.now() + 3600000) msg = 'CHYBA: datum v budoucnosti';
+      else if (!isFinite(value)) msg = 'CHYBA: chybí nebo neplatný stav';
+      else {
+        const f = importMeter_({ cislo: cell('n'), budova: cell('b'), druh: cell('t') }, meters);
+        if (!f.m) msg = 'CHYBA: ' + f.err;
+        else {
+          mid = f.m.id;
+          const val = round_(value, f.m.decimals);
+          if (!write) { msg = 'OK, zapíše se (' + f.m.name + ', ' + (f.m.buildingLabel || f.m.building) + ') = ' + val; cnt.ok++; }
+          else {
+            const note = [String(cell('note')).trim(), String(cell('photo')).trim() ? 'Arch: ' + String(cell('photo')).trim() : '', 'Import z papíru.'].filter(Boolean).join(' ');
+            const res = backfillCore_(f.m, when, val, note, 'Správce', false);
+            if (res.ok) { msg = 'ZAPSÁNO ✓ ' + Utilities.formatDate(new Date(), tz, 'd. M. yyyy H:mm'); cnt.wrote++; }
+            else if (res.error === 'dup') { msg = 'PŘESKOČENO: stejný stav k tomuto dni už je zapsaný'; cnt.dup++; }
+            else { msg = 'CHYBA: ' + res.error; }
+          }
+        }
+      }
+      if (/^CHYBA/.test(msg)) cnt.err++;
+      sh.getRange(rowNo, c.st + 1).setValue(msg);
+      sh.getRange(rowNo, c.id + 1).setValue(mid);
+    }
   } finally {
     if (write) lock.releaseLock();
   }
-  const nl = String.fromCharCode(10);
-  const text = (write ? 'IMPORT PROVEDEN' : 'NÁHLED (nic se nezapisuje)') + nl + out.join(nl) + nl + nl +
-    (write ? 'Zapsáno: ' + wrote + ', už zapsáno dříve: ' + dup + ', chybí nebo chyba: ' + missing.length : 'Bude zapsáno: ' + out.filter(x => x.indexOf('ZAPÍŠE') === 0).length + ', chybí v tabulce: ' + missing.length);
+  const text = write
+    ? 'Zapsáno: ' + cnt.wrote + ', už zapsáno: ' + cnt.dup + ', chyby: ' + cnt.err + (cnt.skip ? ', dříve zapsané přeskočeno: ' + cnt.skip : '')
+    : 'Zapíše se: ' + cnt.ok + ', chyby: ' + cnt.err + (cnt.skip ? ', dříve zapsané: ' + cnt.skip : '') + '. Výsledek je ve sloupci Stav importu.';
   Logger.log(text);
-  try { SpreadsheetApp.getActive().toast(text.split(nl).slice(-1)[0], write ? 'Import hotov' : 'Náhled hotov', 20); } catch (e) {}
+  say(text);
 }
 
-function importPaper930Preview() { paperRun_(false); }
-function importPaper930() { paperRun_(true); }
+function importPreview() { importRun_(false); }
+function importWrite() { importRun_(true); }
+
+// ---------- foto papírového archu (správce v appce): uložení na Disk + AI přepis do listu ----------
+function paperUpload_(body) {
+  const chk = adminCheck_(body.pin);
+  if (!chk.ok) return chk;
+  if (!body.photo) return { ok: false, error: 'data' };
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+  const name = 'arch-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd-HHmmss') + '.jpg';
+  try { child_(driveRoot_(), PAPER_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', name)); }
+  catch (e) { return { ok: false, error: 'drive' }; }
+  const ai = paperTranscribe_(body.photo);
+  if (!ai.ok) return { ok: true, name: name, count: 0, aiError: ai.error };
+  const sh = ensureImportSheet_();
+  ai.rows.forEach(r => {
+    let d = '';
+    if (r.datum) { try { d = Utilities.parseDate(r.datum + ' 12:00', tz, 'yyyy-MM-dd HH:mm'); } catch (e) {} }
+    sh.appendRow([d, r.budova, r.druh, r.cislo, r.stav, 'AI z archu, ověř', name, 'K ověření', '']);
+  });
+  return { ok: true, name: name, count: ai.rows.length, rows: ai.rows };
+}
+
+// přepis tabulky z fotky (Gemini, klíč je jen ve vlastnostech skriptu)
+function paperTranscribe_(b64) {
+  const key = props_().getProperty('GEMINI_KEY');
+  if (!key) return { ok: false, error: 'nokey' };
+  const models = geminiModels_();
+  if (!models.length) return { ok: false, error: 'nomodel' };
+  const prompt = 'Na fotce je papírový arch s ručně psanými odečty měřidel v bytovém domě. Sloupce zleva: Č.P. (číslo popisné domu 271 až 275; řádky se značkou /2, /4, /6, /8, /10 patří k domu uvedenému těsně nad nimi), PLYNO a VODOMĚRY v m3 (vlevo plynoměr, vpravo vodoměr), ČÍSLO ELEKTROMĚRU, STAV ELEKTROMĚRU v kWh a DATUM. Ručně napsané datum se může táhnout přes víc řádků a platí pro všechny řádky vedle něj. Elektroměry zapsané u dolních řádků kolem nápisu KOTELNA patří k domu 271. Pod nápisem KOTELNA jsou plynoměry (PLYN), vodoměr a TUV (teplá užitková voda) kotelny. ' +
+    'Vrať JSON pole, jeden objekt pro každou přečtenou hodnotu: {"datum":"YYYY-MM-DD" nebo null,"budova":"271".."275" nebo "Kotelna","druh":"Vodoměr" nebo "Plynoměr" nebo "Elektroměr" nebo "TUV","cislo":"číslo elektroměru bez mezer, např. W060073, jinak prázdný řetězec","stav":číslo s desetinnou tečkou}. Hodnoty nevymýšlej, nečitelné vynech.';
+  const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
+  const res = UrlFetchApp.fetchAll(models.map(m => ({
+    url: 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', method: 'post',
+    contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true })));
+  for (const r of res) {
+    if (r.getResponseCode() !== 200) continue;
+    try {
+      const j = JSON.parse(r.getContentText()), t = j.candidates[0].content.parts.map(p => p.text || '').join('');
+      let arr = JSON.parse(t.replace(/```json|```/g, ''));
+      if (!Array.isArray(arr) && arr && Array.isArray(arr.radky)) arr = arr.radky;
+      if (!Array.isArray(arr)) continue;
+      const rows = arr.map(o => ({
+        datum: /^\d{4}-\d{2}-\d{2}$/.test(String(o.datum || '')) ? String(o.datum) : '',
+        budova: String(o.budova === undefined || o.budova === null ? '' : o.budova).trim(),
+        druh: normType_(o.druh),
+        cislo: String(o.cislo || '').replace(/\s/g, '').toUpperCase(),
+        stav: (o.stav === undefined || o.stav === null || String(o.stav).trim() === '') ? NaN : Number(String(o.stav).replace(',', '.'))
+      })).filter(o => isFinite(o.stav));
+      if (rows.length) return { ok: true, rows: rows };
+    } catch (e) {}
+  }
+  return { ok: false, error: 'ai' };
+}

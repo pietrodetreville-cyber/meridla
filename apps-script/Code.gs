@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.19.1';
+const SCRIPT_VERSION = '1.20.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -108,7 +108,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -378,6 +378,7 @@ function doPost(e) {
   if (body.action === 'adminCheck') return ok_(adminCheck_(body.pin));
   if (body.action === 'placeUpload') return ok_(placeUpload_(body));
   if (body.action === 'backfill') return ok_(backfill_(body, who));
+  if (body.action === 'paperUpload') return ok_(paperUpload_(body));
 
   const meter = meters_().find(m => m.id === body.id);
   const noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
