@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.19.0';
+const SCRIPT_VERSION = '1.19.1';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -569,6 +569,24 @@ function placeUpload_(body) {
 
 // Zpětný záznam bez fotky (stavy z papírových záznamů). Jen správce s PINem.
 // Zapíše se k vybranému datu; předchozí stav a přírůstek se dopočítají podle času a upraví se i následující záznam.
+// Samotný zápis zpětného záznamu (volající drží zámek). Vrací { ok, diff, warn } nebo { ok: false, error: 'dup' }.
+function backfillCore_(meter, when, value, note, who, force) {
+  const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS);
+  const all = readings_().filter(x => x.id === meter.id && x.has).sort((x, y) => x.time - y.time);
+  if (!force && all.some(x => dayNum_(x.time) === dayNum_(when) && x.value === value)) return { ok: false, error: 'dup' };
+  const before = all.filter(x => x.time < when), prev = before.length ? before[before.length - 1] : null;
+  const next = all.find(x => x.time > when);
+  const diff = prev ? Math.round((value - prev.value) * 1000) / 1000 : '';
+  let n = String(note || '').slice(0, 200);
+  if (prev && value < prev.value) n = ('POZOR: nižší než předchozí záznam. ' + n).trim();
+  n = (n + ' Zpětně doplněno správcem.').trim();
+  const rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
+  sheet.appendRow([when, meter.id, meter.name, value, prev ? prev.value : '', diff, n, '', 'doplněno zpětně (papír)', who, meter.building, '', rid]);
+  // následující záznam má nový předchozí stav
+  if (next && next.row) { sheet.getRange(next.row, 5).setValue(value); sheet.getRange(next.row, 6).setValue(Math.round((next.value - value) * 1000) / 1000); }
+  return { ok: true, diff: diff, warn: !!(prev && value < prev.value) };
+}
+
 function backfill_(body, who) {
   const chk = adminCheck_(body.pin);
   if (!chk.ok) return chk;
@@ -584,20 +602,7 @@ function backfill_(body, who) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS);
-    const all = readings_().filter(x => x.id === meter.id && x.has).sort((x, y) => x.time - y.time);
-    if (!body.force && all.some(x => dayNum_(x.time) === dayNum_(when) && x.value === value)) return { ok: false, error: 'dup' };
-    const before = all.filter(x => x.time < when), prev = before.length ? before[before.length - 1] : null;
-    const next = all.find(x => x.time > when);
-    const diff = prev ? Math.round((value - prev.value) * 1000) / 1000 : '';
-    let note = String(body.note || '').slice(0, 200);
-    if (prev && value < prev.value) note = ('POZOR: nižší než předchozí záznam. ' + note).trim();
-    note = (note + ' Zpětně doplněno správcem.').trim();
-    const rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
-    sheet.appendRow([when, meter.id, meter.name, value, prev ? prev.value : '', diff, note, '', 'doplněno zpětně (papír)', who, meter.building, '', rid]);
-    // následující záznam má nový předchozí stav
-    if (next && next.row) { sheet.getRange(next.row, 5).setValue(value); sheet.getRange(next.row, 6).setValue(Math.round((next.value - value) * 1000) / 1000); }
-    return { ok: true, diff: diff, warn: !!(prev && value < prev.value) };
+    return backfillCore_(meter, when, value, body.note, who, !!body.force);
   } finally {
     lock.releaseLock();
   }
