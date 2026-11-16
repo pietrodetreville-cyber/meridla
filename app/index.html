@@ -217,7 +217,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <section id="hist" class="hide">
   <div class="card">
     <strong id="hname"></strong>
-    <div class="seg" id="hrange"><button data-r="week" class="on" type="button">Týden</button><button data-r="month" type="button">Měsíc</button><button data-r="year" type="button">Rok</button><button data-r="all" type="button">Vše</button></div>
+    <div class="seg" id="hrange"><button data-r="week" type="button">Týden</button><button data-r="month" type="button">Měsíc</button><button data-r="year" type="button">Rok</button><button data-r="all" class="on" type="button">Vše</button></div>
     <div class="pnav"><button class="sec" id="pprev" type="button" aria-label="Předchozí období">◀</button><div id="ptitle"></div><button class="sec" id="pnext" type="button" aria-label="Další období">▶</button></div>
     <div class="note" id="pnote"></div>
     <div id="hbody"></div>
@@ -264,7 +264,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.22.0';
+const VERSION = '1.22.2';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -572,7 +572,7 @@ $('hback').onclick = () => show('meter');
 $('mhist').onclick = async () => { $('hname').textContent = current.name + (current.building ? ' · ' + current.building : ''); show('hist'); await loadHist(); };
 
 // ================= detail měření: týden / měsíc / rok =================
-let hist = { id: null, readings: null, range: 'week', offset: 0, note: '' };
+let hist = { id: null, readings: null, range: 'all', offset: 0, note: '' };
 const MONTHS = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen', 'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'];
 const mondayOf = d => { const x = new Date(d.getFullYear(), d.getMonth(), d.getDate()); x.setDate(x.getDate() - ((x.getDay() + 6) % 7)); return x; };
 // o kolik období (od aktuálního) je den d: 0 = aktuální, -1 = předchozí, ...
@@ -601,10 +601,20 @@ function periodInfo(range, offset, rs) {
     for (let m = 0; m < 12; m++) buckets.push({ start: new Date(y, m, 1), end: new Date(y, m + 1, 1), label: String(m + 1), sum: 0 });
     title = 'Rok ' + y;
   } else {
-    const f = rs.length ? rs[0].t : today, s0 = new Date(f.getFullYear(), f.getMonth(), 1), e0 = new Date(today.getFullYear(), today.getMonth() + 1, 1);
-    const months = (e0.getFullYear() - s0.getFullYear()) * 12 + e0.getMonth() - s0.getMonth();
-    if (months <= 36) { per = 'měsíc'; for (let i = 0; i < months; i++) { const st = new Date(s0.getFullYear(), s0.getMonth() + i, 1); buckets.push({ start: st, end: new Date(st.getFullYear(), st.getMonth() + 1, 1), label: (months <= 12 || i % 3 === 0) ? String(st.getMonth() + 1) : '', sum: 0 }); } }
-    else { per = 'rok'; for (let y = s0.getFullYear(); y <= today.getFullYear(); y++) buckets.push({ start: new Date(y, 0, 1), end: new Date(y + 1, 0, 1), label: String(y), sum: 0 }); }
+    // celá historie: jemnost sloupců podle délky (do 45 dní po dnech, do ~6 měsíců po týdnech, jinak po měsících / letech)
+    const f = rs.length ? rs[0].t : today, f0 = new Date(f.getFullYear(), f.getMonth(), f.getDate()), spanDays = Math.round((today - f0) / 864e5) + 1;
+    if (spanDays <= 45) {
+      per = 'den'; const step = spanDays <= 16 ? 1 : 5;
+      for (let i = 0; i < spanDays; i++) { const d = new Date(f0.getFullYear(), f0.getMonth(), f0.getDate() + i); buckets.push({ start: d, end: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1), label: (i % step === 0 || i === spanDays - 1) ? d.getDate() + '.' + (d.getMonth() + 1) : '', sum: 0 }); }
+    } else if (spanDays <= 190) {
+      per = 'týden'; const m0 = mondayOf(f0), weeks = Math.round((mondayOf(today) - m0) / (7 * 864e5)) + 1, step = weeks <= 12 ? 1 : 2;
+      for (let i = 0; i < weeks; i++) { const d = new Date(m0.getFullYear(), m0.getMonth(), m0.getDate() + i * 7); buckets.push({ start: d, end: new Date(d.getFullYear(), d.getMonth(), d.getDate() + 7), label: (i % step === 0) ? d.getDate() + '.' + (d.getMonth() + 1) : '', sum: 0 }); }
+    } else {
+      const s0 = new Date(f.getFullYear(), f.getMonth(), 1), e0 = new Date(today.getFullYear(), today.getMonth() + 1, 1);
+      const months = (e0.getFullYear() - s0.getFullYear()) * 12 + e0.getMonth() - s0.getMonth();
+      if (months <= 36) { per = 'měsíc'; for (let i = 0; i < months; i++) { const st = new Date(s0.getFullYear(), s0.getMonth() + i, 1); buckets.push({ start: st, end: new Date(st.getFullYear(), st.getMonth() + 1, 1), label: (months <= 12 || i % 3 === 0) ? String(st.getMonth() + 1) : '', sum: 0 }); } }
+      else { per = 'rok'; for (let y = s0.getFullYear(); y <= today.getFullYear(); y++) buckets.push({ start: new Date(y, 0, 1), end: new Date(y + 1, 0, 1), label: String(y), sum: 0 }); }
+    }
     title = rs.length ? 'Celá historie od ' + dd(rs[0].t, true) : 'Celá historie';
   }
   const from = buckets[0].start, to = buckets[buckets.length - 1].end;
