@@ -60,6 +60,18 @@ function importMeter_(r, meters) {
   return { err: c.length ? 'v budově je víc měřidel tohoto druhu, doplň číslo měřidla' : 'v budově ' + r.budova + ' není měřidlo druhu ' + typ };
 }
 
+// odkaz na fotku archu na Disku podle názvu souboru (do sloupce Fotka v Odečtech); text už s odkazem se použije přímo
+const archUrlCache_ = {};
+function archUrl_(name) {
+  const n = String(name || '').trim();
+  if (!n) return '';
+  if (n.indexOf('http') === 0) return n;
+  if (archUrlCache_[n] !== undefined) return archUrlCache_[n];
+  let url = '';
+  try { const it = child_(driveRoot_(), PAPER_FOLDER).getFilesByName(n); if (it.hasNext()) url = it.next().getUrl(); } catch (e) {}
+  return (archUrlCache_[n] = url);
+}
+
 function importRun_(write) {
   const sh = ensureImportSheet_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   const data = sh.getDataRange().getValues();
@@ -94,7 +106,7 @@ function importRun_(write) {
           if (!write) { msg = 'OK, zapíše se (' + f.m.name + ', ' + (f.m.buildingLabel || f.m.building) + ') = ' + val; cnt.ok++; }
           else {
             const note = [String(cell('note')).trim(), String(cell('photo')).trim() ? 'Arch: ' + String(cell('photo')).trim() : '', 'Import z papíru.'].filter(Boolean).join(' ');
-            const res = backfillCore_(f.m, when, val, note, 'Správce', false);
+            const res = backfillCore_(f.m, when, val, note, 'Správce', false, archUrl_(cell('photo')));
             if (res.ok) { msg = 'ZAPSÁNO ✓ ' + Utilities.formatDate(new Date(), tz, 'd. M. yyyy H:mm'); cnt.wrote++; }
             else if (res.error === 'dup') { msg = 'PŘESKOČENO: stejný stav k tomuto dni už je zapsaný'; cnt.dup++; }
             else { msg = 'CHYBA: ' + res.error; }
