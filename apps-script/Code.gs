@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.21.0';
+const SCRIPT_VERSION = '1.21.1';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -108,7 +108,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -732,6 +732,14 @@ function resetReadings() {
   if (ui.alert('Resetovat záznamy', 'Opravdu vymazat všech ' + n + ' řádků z listu Odečty (hlavička zůstane)? Záloha se nedělá. Fotky na Disku zůstanou. Vrátit to půjde jen přes Soubor → Historie verzí.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try { sh.getRange(2, 1, n, sh.getLastColumn()).clearContent(); props_().deleteProperty('NOTIF'); } finally { lock.releaseLock(); }
+  ui.alert('Hotovo. Vymazáno ' + n + ' řádků.');
+}
+
+function resetImportSheet() {
+  const ui = SpreadsheetApp.getUi(), sh = SpreadsheetApp.getActive().getSheetByName('Import z papíru'), n = sh ? sh.getLastRow() - 1 : 0;
+  if (n < 1) { ui.alert('List Import z papíru je prázdný.'); return; }
+  if (ui.alert('Vymazat Import z papíru', 'Opravdu vymazat všech ' + n + ' řádků z listu Import z papíru (hlavička zůstane)? Fotky archů na Disku zůstanou. Vrátit to půjde jen přes Soubor → Historie verzí.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  sh.getRange(2, 1, n, sh.getLastColumn()).clearContent();
   ui.alert('Hotovo. Vymazáno ' + n + ' řádků.');
 }
 
