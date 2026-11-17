@@ -38,7 +38,7 @@
 <body>
 <div class="wrap">
   <div class="pane">
-    <div class="ph"><b>Fotka archu</b><button class="sec" id="up" type="button">📷 Nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"><select id="arch"></select></div>
+    <div class="ph"><b>Fotka archu</b><button class="sec" id="up" type="button">📷 Nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"><select id="arch"></select><button class="sec" id="reread" type="button" title="Pustí vybranou fotku znovu do čtení AI">🔄 Přečíst znovu</button></div>
     <div id="img"><div class="muted" style="padding:20px">Vyber arch, nebo nejdřív nahraj fotku v aplikaci (🔒 Admin).</div></div>
   </div>
   <div class="pane">
@@ -60,7 +60,7 @@ let D = null, rows = [], busy = false;
 const $ = id => document.getElementById(id);
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 function setMsg(t, bad) { const m = $('msg'); m.textContent = t; m.style.color = bad ? '#991b1b' : '#374151'; }
-function lock(on) { busy = on; ['save', 'check', 'write', 'add', 'up'].forEach(i => $(i).disabled = on); }
+function lock(on) { busy = on; ['save', 'check', 'write', 'add', 'up', 'reread'].forEach(i => $(i).disabled = on); }
 
 function opt(sel, value, label) { const o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; sel.appendChild(o); return o; }
 function selectOf(values, current, blank) {
@@ -194,6 +194,18 @@ function uploadArch(file) {
     }).withFailureHandler(e => { lock(false); setMsg('Nahrání selhalo: ' + e.message, true); }).importUiUpload(b64);
   }).catch(() => { lock(false); setMsg('Fotku se nepodařilo zpracovat.', true); });
 }
+function aiDone(r) {
+  if (!r || !r.ok) { lock(false); return setMsg(r && r.error === 'nofile' ? 'Fotka ve složce Papírové záznamy nenalezena.' : 'Čtení se nepovedlo.', true); }
+  window.__newArch = r.name; load(true);
+  setTimeout(() => setMsg(r.count ? 'AI přepsala ' + r.count + ' hodnot. Zkontroluj je podle fotky a oprav.' : 'AI hodnoty nepřečetla' + (r.detail ? ' (' + r.detail + ')' : '') + '. Zkus to za chvíli znovu, nebo doplň ručně tlačítkem + Řádek.', !r.count), 700);
+}
+$('reread').onclick = () => {
+  const n = $('arch').value; if (!n || busy) return setMsg('Nejdřív vyber arch.', true);
+  const have = rows.filter(r => r.foto === n && !/^VYŘAZENO/.test(r.status || '')).length;
+  if (have && !confirm('K tomuto archu už je v tabulce ' + have + ' řádků. Čtení přidá další, takže se mohou zdvojit (nechtěné pak odškrtni). Pokračovat?')) return;
+  lock(true); setMsg('AI čte fotku znovu (až minutu)…');
+  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + e.message, true); }).importUiReread(n);
+};
 $('up').onclick = () => $('upf').click();
 $('upf').onchange = e => { uploadArch(e.target.files[0]); e.target.value = ''; };
 document.addEventListener('dragover', e => e.preventDefault());

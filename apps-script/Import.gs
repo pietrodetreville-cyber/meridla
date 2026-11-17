@@ -133,13 +133,21 @@ function paperProcess_(photo) {
   const name = 'arch-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd-HHmmss') + '.jpg';
   try { child_(driveRoot_(), PAPER_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(photo), 'image/jpeg', name)); }
   catch (e) { return { ok: false, error: 'drive' }; }
+  return paperRead_(photo, name);
+}
+
+// přečte arch AI a řádky přidá do listu (fotka je už na Disku pod názvem name)
+function paperRead_(photo, name) {
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   const ai = paperTranscribe_(photo);
   if (!ai.ok) return { ok: true, name: name, count: 0, aiError: ai.error, detail: ai.detail || '' };
-  const sh = ensureImportSheet_();
+  const sh = ensureImportSheet_(), c = importCols_(sh);
   ai.rows.forEach(r => {
     let d = '';
     if (r.datum) { try { d = Utilities.parseDate(r.datum + ' 12:00', tz, 'yyyy-MM-dd HH:mm'); } catch (e) {} }
-    sh.appendRow([d, r.budova, r.druh, r.cislo, r.stav, 'AI z archu, ověř', name, 'K ověření', '']);
+    const row = new Array(c.n).fill('');
+    row[c.date] = d; row[c.b] = r.budova; row[c.t] = r.druh; row[c.num] = r.cislo; row[c.v] = r.stav; row[c.note] = 'AI z archu, ověř'; row[c.photo] = name; row[c.st] = 'K ověření';
+    sh.appendRow(row);
   });
   return { ok: true, name: name, count: ai.rows.length, rows: ai.rows };
 }
@@ -175,7 +183,7 @@ function paperTranscribe_(b64) {
     url: 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', method: 'post',
     contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true }));
   const det = [];
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     const res = UrlFetchApp.fetchAll(reqs);
     for (let i = 0; i < res.length; i++) {
       const r = res[i], code = r.getResponseCode();
@@ -197,7 +205,7 @@ function paperTranscribe_(b64) {
         det.push(models[i] + ': žádná čitelná hodnota');
       } catch (e) { det.push(models[i] + ': ' + e.message); }
     }
-    if (det.some(d => /HTTP (429|5\d\d)/.test(d))) Utilities.sleep(2500); else break;
+    if (det.some(d => /HTTP (429|5\d\d)/.test(d))) Utilities.sleep(3000 * (attempt + 1)); else break;
   }
   Logger.log('Přepis archu selhal: ' + det.join(' | '));
   return { ok: false, error: 'ai', detail: det.slice(0, 4).join(' | ') };
@@ -269,6 +277,13 @@ function importUiSave(rows) {
 
 // nahrání fotky archu přímo z okna v tabulce (běží pod účtem správce tabulky, PIN netřeba)
 function importUiUpload(photo) { return paperProcess_(photo); }
+
+// znovu pustí do čtení už uloženou fotku archu (např. když první čtení selhalo na přetížení AI)
+function importUiReread(name) {
+  const it = child_(driveRoot_(), PAPER_FOLDER).getFilesByName(String(name || ''));
+  if (!it.hasNext()) return { ok: false, error: 'nofile' };
+  return paperRead_(Utilities.base64Encode(it.next().getBlob().getBytes()), String(name));
+}
 
 function importUiRun(write) { return { ok: true, text: importRun_(!!write) }; }
 
