@@ -123,12 +123,17 @@ function importWrite() { importRun_(true); }
 function paperUpload_(body) {
   const chk = adminCheck_(body.pin);
   if (!chk.ok) return chk;
-  if (!body.photo) return { ok: false, error: 'data' };
+  return paperProcess_(body.photo);
+}
+
+// uloží fotku archu na Disk a nechá ji přepsat AI do listu (volá se z appky po ověření PINu i z okna v tabulce)
+function paperProcess_(photo) {
+  if (!photo) return { ok: false, error: 'data' };
   const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   const name = 'arch-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd-HHmmss') + '.jpg';
-  try { child_(driveRoot_(), PAPER_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', name)); }
+  try { child_(driveRoot_(), PAPER_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(photo), 'image/jpeg', name)); }
   catch (e) { return { ok: false, error: 'drive' }; }
-  const ai = paperTranscribe_(body.photo);
+  const ai = paperTranscribe_(photo);
   if (!ai.ok) return { ok: true, name: name, count: 0, aiError: ai.error, detail: ai.detail || '' };
   const sh = ensureImportSheet_();
   ai.rows.forEach(r => {
@@ -261,6 +266,9 @@ function importUiSave(rows) {
     return { ok: true, saved: saved };
   } finally { lock.releaseLock(); }
 }
+
+// nahrání fotky archu přímo z okna v tabulce (běží pod účtem správce tabulky, PIN netřeba)
+function importUiUpload(photo) { return paperProcess_(photo); }
 
 function importUiRun(write) { return { ok: true, text: importRun_(!!write) }; }
 

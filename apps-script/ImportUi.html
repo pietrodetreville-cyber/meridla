@@ -38,7 +38,7 @@
 <body>
 <div class="wrap">
   <div class="pane">
-    <div class="ph"><b>Fotka archu</b><select id="arch"></select></div>
+    <div class="ph"><b>Fotka archu</b><button class="sec" id="up" type="button">📷 Nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"><select id="arch"></select></div>
     <div id="img"><div class="muted" style="padding:20px">Vyber arch, nebo nejdřív nahraj fotku v aplikaci (🔒 Admin).</div></div>
   </div>
   <div class="pane">
@@ -60,7 +60,7 @@ let D = null, rows = [], busy = false;
 const $ = id => document.getElementById(id);
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 function setMsg(t, bad) { const m = $('msg'); m.textContent = t; m.style.color = bad ? '#991b1b' : '#374151'; }
-function lock(on) { busy = on; ['save', 'check', 'write', 'add'].forEach(i => $(i).disabled = on); }
+function lock(on) { busy = on; ['save', 'check', 'write', 'add', 'up'].forEach(i => $(i).disabled = on); }
 
 function opt(sel, value, label) { const o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; sel.appendChild(o); return o; }
 function selectOf(values, current, blank) {
@@ -125,10 +125,12 @@ function fillFilter() {
   D.arches.forEach(a => opt(f, 'arch:' + a, 'Arch ' + a));
   f.value = [...f.options].some(o => o.value === keep) ? keep : 'todo';
 }
-function fillArches() {
-  const s = $('arch'); s.textContent = ''; opt(s, '', '— vyber arch —');
+function fillArches(want) {
+  const s = $('arch'), prev = want || s.value; s.textContent = ''; opt(s, '', '— vyber arch —');
   D.arches.slice().reverse().forEach(a => opt(s, a));
-  if (D.arches.length) { s.value = D.arches[D.arches.length - 1]; showPhoto(); }
+  const pick = prev && D.arches.indexOf(prev) >= 0 ? prev : (D.arches.length ? D.arches[D.arches.length - 1] : '');
+  const changed = pick !== prev || !!want || !s.dataset.shown; s.value = pick;
+  if (changed && pick) { s.dataset.shown = '1'; showPhoto(); }
 }
 function showPhoto() {
   const n = $('arch').value, box = $('img');
@@ -145,7 +147,7 @@ function load(keepMsg) {
   lock(true);
   google.script.run.withSuccessHandler(d => {
     D = d; rows = d.rows.map(r => Object.assign({}, r));
-    fillFilter(); if (!$('arch').options.length) fillArches(); render(); lock(false);
+    fillFilter(); fillArches(window.__newArch); window.__newArch = ''; render(); lock(false);
     if (!keepMsg) setMsg(rows.length ? 'Načteno řádků: ' + rows.length + '. Oprav hodnoty podle fotky a zvol Zkontrolovat.' : 'List je prázdný.');
   }).withFailureHandler(e => { lock(false); setMsg('Chyba načtení: ' + e.message, true); }).importUiData();
 }
@@ -177,6 +179,25 @@ $('add').onclick = () => {
   $('filt').value = 'all'; render(); $('tw').scrollTop = 1e9;
 };
 $('filt').onchange = render;
+// nahrání fotky archu z počítače: zmenší se na 2000 px, uloží se na Disk a AI ji přepíše do řádků
+function resizeFile(file) {
+  return createImageBitmap(file).then(bmp => { const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.9).split(',')[1]; });
+}
+function uploadArch(file) {
+  if (!file || busy) return;
+  lock(true); setMsg('Zmenšuji a nahrávám fotku, AI čte hodnoty (až půl minuty)…');
+  resizeFile(file).then(b64 => {
+    google.script.run.withSuccessHandler(r => {
+      if (!r || !r.ok) { lock(false); return setMsg('Nahrání se nepovedlo' + (r && r.error ? ' (' + r.error + ')' : '') + '.', true); }
+      window.__newArch = r.name; load(true);
+      setTimeout(() => setMsg(r.count ? 'Fotka uložena, AI přepsala ' + r.count + ' hodnot. Zkontroluj je podle fotky a oprav.' : 'Fotka je uložená, ale AI hodnoty nepřečetla' + (r.detail ? ' (' + r.detail + ')' : '') + '. Doplň je ručně tlačítkem + Řádek.', !r.count), 700);
+    }).withFailureHandler(e => { lock(false); setMsg('Nahrání selhalo: ' + e.message, true); }).importUiUpload(b64);
+  }).catch(() => { lock(false); setMsg('Fotku se nepodařilo zpracovat.', true); });
+}
+$('up').onclick = () => $('upf').click();
+$('upf').onchange = e => { uploadArch(e.target.files[0]); e.target.value = ''; };
+document.addEventListener('dragover', e => e.preventDefault());
+document.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.indexOf("image/") === 0) uploadArch(f); });
 $('arch').onchange = showPhoto;
 load();
 </script>
