@@ -194,12 +194,12 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
   <div id="hadminpanel" class="card hide">
     <div class="row" style="align-items:center"><b style="flex:1">Admin · papírový záznam</b><button class="sec" id="aclose" type="button" style="flex:none">Zavřít admin</button></div>
-    <div class="note" style="margin:4px 0 8px">Vyfoť papírový arch s hodnotami. Fotka se uloží na Disk a AI z ní přepíše hodnoty do listu „Import z papíru" v tabulce, kde je zkontroluješ a zapíšeš.</div>
+    <div class="note" style="margin:4px 0 8px">Vyfoť papírový arch. Fotka se jen uloží na Disk (složka Papírové záznamy). Čtení hodnot AI a zápis uděláš později v tabulce přes okno Import z papíru.</div>
     <div class="row"><button class="sec" id="acamb" type="button">📷 Vyfotit arch</button><button class="sec" id="afileb" type="button">🖼️ Z galerie</button></div>
     <input id="acam" type="file" accept="image/*" capture="environment" class="hide"><input id="afile" type="file" accept="image/*" class="hide">
     <img id="apreview" class="hide" alt="Náhled archu">
     <div class="note" id="astat" style="margin-top:8px"></div>
-    <div class="row"><button id="aupload" class="hide" type="button">Uložit a přepsat</button><button class="sec hide" id="acancel" type="button">Zrušit</button></div>
+    <div class="row"><button id="aupload" class="hide" type="button">Uložit fotku</button><button class="sec hide" id="acancel" type="button">Zrušit</button></div>
     <div class="note" id="aresult"></div>
   </div>
 </section>
@@ -283,7 +283,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.25.1';
+const VERSION = '1.26.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -542,16 +542,14 @@ $('aupload').onclick = async () => {
   if (!adminOn()) { adminLock(); return toast('Admin se po čase zamkl. Zadej PIN znovu.'); }
   if (!pendingArch) return;
   $('aupload').disabled = true; $('aresult').textContent = '';
-  $('astat').innerHTML = '<span class="spin sm"></span>Ukládám a čtu hodnoty z archu… (může trvat až půl minuty)';
+  $('astat').innerHTML = '<span class="spin sm"></span>Ukládám fotku archu…';
   try {
     const r = await post({ token: token(), action: 'paperUpload', pin: adminPin, photo: pendingArch });
     if (!r.ok) { if (r.error === 'pin' || r.error === 'locked') adminLock(); $('astat').textContent = adminError(r.error); return; }
     adminUntil = Date.now() + 10 * 60 * 1000;
     pendingArch = ''; $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide');
-    if (r.aiError || !r.count) { $('astat').textContent = 'Fotka je uložená (' + r.name + '), ale AI z ní hodnoty nepřečetla. Přepiš je ručně do listu „Import z papíru“ v tabulce.' + (r.detail ? ' Důvod: ' + String(r.detail).slice(0, 300) : ''); return; }
-    $('astat').textContent = 'Uloženo (' + r.name + '). AI přepsala ' + r.count + ' hodnot do listu „Import z papíru“. Zkontroluj je a oprav v tabulce, pak v menu Měřidla → Import z papíru zvol Náhled a Zapsat hodnoty.';
-    $('aresult').innerHTML = (r.rows || []).slice(0, 40).map(x => '✓ ' + ymdCz(x.datum) + ' · ' + (x.budova || '?') + ' ' + (x.druh || '') + (x.cislo ? ' ' + x.cislo : '') + ' = ' + fmtNum(x.stav)).join('<br>');
-    toast('Arch přepsán, zkontroluj list Import z papíru', 5000);
+    $('astat').textContent = 'Fotka archu je uložená na Disku (' + r.name + '). Hodnoty z ní přečteš později v tabulce: Měřidla → Import z papíru → Otevřít přehled → Vybrat fotku.';
+    toast('Arch uložen', 3500);
   } catch (e) { $('astat').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('aupload').disabled = false; }
 };

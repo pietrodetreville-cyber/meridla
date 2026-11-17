@@ -145,7 +145,8 @@ function paperProcess_(photo) {
   const name = 'arch-' + Utilities.formatDate(new Date(), tz, 'yyyyMMdd-HHmmss') + '.jpg';
   try { child_(driveRoot_(), PAPER_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(photo), 'image/jpeg', name)); }
   catch (e) { return { ok: false, error: 'drive' }; }
-  return paperRead_(photo, name);
+  // čtení AI se nespouští: arch se jen uloží, hodnoty se z něj přečtou později v okně Import z papíru
+  return { ok: true, name: name, saved: true, count: 0 };
 }
 
 // přečte arch AI a řádky přidá do listu (fotka je už na Disku pod názvem name)

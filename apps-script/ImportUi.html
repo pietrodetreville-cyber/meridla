@@ -198,12 +198,11 @@ function resizeFile(file) {
 }
 function uploadArch(file) {
   if (!file || busy) return;
-  lock(true); setMsg('Zmenšuji a nahrávám fotku, AI čte hodnoty (až půl minuty)…');
+  lock(true); setMsg('Zmenšuji a ukládám fotku na Disk…');
   resizeFile(file).then(b64 => {
     google.script.run.withSuccessHandler(r => {
       if (!r || !r.ok) { lock(false); return setMsg('Nahrání se nepovedlo' + (r && r.error ? ' (' + r.error + ')' : '') + '.', true); }
-      window.__newArch = r.name; load(true);
-      setTimeout(() => setMsg(r.count ? 'Fotka uložena, AI přepsala ' + r.count + ' hodnot. Zkontroluj je podle fotky a oprav.' : 'Fotka je uložená, ale AI hodnoty nepřečetla' + (r.detail ? ' (' + r.detail + ')' : '') + '. Doplň je ručně tlačítkem + Řádek.', !r.count), 700);
+      lock(false); setMsg('Fotka uložena na Disk. Vyber ji v seznamu a zvol Přečíst AI.'); window.__pickName = r.name; $('up').click();
     }).withFailureHandler(e => { lock(false); setMsg('Nahrání selhalo: ' + e.message, true); }).importUiUpload(b64);
   }).catch(() => { lock(false); setMsg('Fotku se nepodařilo zpracovat.', true); });
 }
@@ -230,6 +229,7 @@ function pkRender(files) {
     const dt = document.createElement('span'); dt.className = 'muted'; dt.textContent = f.date + ' · ' + f.kb + ' kB';
     const bd = document.createElement('span'); bd.className = 'b ' + (n ? 'ok' : 'wait'); bd.textContent = n ? 'načteno: ' + n + ' řádků' : 'nepřečteno';
     d.append(nm, dt, bd);
+    if (window.__pickName && f.name === window.__pickName) { pkSel = f; d.classList.add('sel'); $('pkgo').disabled = false; window.__pickName = ''; }
     d.onclick = () => { pkSel = f; [...l.children].forEach(c => c.classList.remove('sel')); d.classList.add('sel'); $('pkgo').disabled = false; };
     d.ondblclick = () => { pkSel = f; $('pkgo').click(); };
     l.appendChild(d);
