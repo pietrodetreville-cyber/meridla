@@ -250,8 +250,7 @@ html:has(#splash:not(.out)){overflow:hidden}
     <label for="dnote">Poznámka (nepovinná)</label>
     <input id="dnote" type="text" autocomplete="off">
     <div class="row"><button class="sec" id="dretake" type="button">Vyfotit znovu</button><button id="dsend" type="button">Odeslat</button></div>
-    <div class="row"><button class="sec" id="dphoto" type="button">Odeslat jen fotku (bez hodnoty)</button></div>
-    <div class="row"><button class="sec" id="dback" type="button">Zpět na seznam</button></div>
+        <div class="row"><button class="sec" id="dback" type="button">Zpět na seznam</button></div>
   </div>
 </section>
 </main>
@@ -278,7 +277,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.23.0';
+const VERSION = '1.24.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -306,8 +305,8 @@ async function api(path) { if (!ENDPOINT) throw new Error('bez adresy skriptu');
   const r = await fetch(ENDPOINT + path, { redirect: 'follow' }); return r.json(); }
 async function post(obj) {
   if (!ENDPOINT) throw new Error('bez adresy skriptu');
-  const r = await fetch(ENDPOINT, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(obj) });
-  const t = await r.text();
+  const ac = new AbortController(), to = setTimeout(() => ac.abort(), 100000);
+  let t; try { const r = await fetch(ENDPOINT, { method: 'POST', redirect: 'follow', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify(obj), signal: ac.signal }); t = await r.text(); } finally { clearTimeout(to); }
   try { return JSON.parse(t); } catch (e) { throw new Error('server: ' + t.replace(/<[^>]+>/g, ' ').replace(/s+/g, ' ').trim().slice(0, 140)); }
 }
 
@@ -317,23 +316,36 @@ const idbAll = async () => { const db = await idb(); return new Promise((res, re
 const idbAdd = async v => { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction('q', 'readwrite'); t.objectStore('q').add(v); t.oncomplete = res; t.onerror = () => rej(t.error); }); };
 const idbDel = async k => { const db = await idb(); return new Promise((res, rej) => { const t = db.transaction('q', 'readwrite'); t.objectStore('q').delete(k); t.oncomplete = res; t.onerror = () => rej(t.error); }); };
 
+let queuedIds = new Set(), flushing = false;
 async function showQueue() {
-  let n = 0; try { n = (await idbAll()).length; } catch (e) {}
+  let items = []; try { items = await idbAll(); } catch (e) {}
+  const n = items.length, ids = new Set(items.map(x => x.val && x.val.id));
+  const changed = ids.size !== queuedIds.size || [...ids].some(x => !queuedIds.has(x));
+  queuedIds = ids;
   $('queue').classList.toggle('hide', !n);
-  $('qtext').textContent = n ? 'Čeká na odeslání: ' + n + ' (není signál).' : '';
+  $('qtext').textContent = n ? (navigator.onLine === false ? 'Čeká na odeslání: ' + n + ' (není signál, odešle se samo).' : 'Odesílá se na pozadí: ' + n + '.') : '';
+  if (changed && typeof renderAll === 'function' && meters.length) renderAll(true);
 }
 async function flushQueue() {
-  let items = []; try { items = await idbAll(); } catch (e) { return; }
-  let sent = 0;
-  for (const it of items) {
-    try { const r = await post(it.val); if (r.ok) { await idbDel(it.key); sent++; } else if (r.error === 'token' || r.error === 'data') { await idbDel(it.key); } else break; }
-    catch (e) { break; }
-  }
-  await showQueue();
-  if (sent) { toast('Odesláno čekajících záznamů: ' + sent); loadList(); }
+  if (flushing) return; flushing = true;
+  try {
+    let items = []; try { items = await idbAll(); } catch (e) { return; }
+    let sent = 0;
+    for (const it of items) {
+      try {
+        const r = await post(it.val);
+        if (r.ok) { await idbDel(it.key); sent++; if (r.warn) toast('Odesláno, ale hodnota je nižší než minule.', 5000); else if (r.pendingValue) toast('Hodnotu z fotky se nepodařilo přečíst. Výbor dostane e-mail a doplní ji.', 6000); }
+        else if (r.error === 'token' || r.error === 'data') { await idbDel(it.key); toast('Jeden záznam se nepodařilo odeslat (neplatný odkaz nebo data).', 6000); }
+        else break;
+      } catch (e) { break; }
+    }
+    await showQueue();
+    if (sent) { toast('Odesláno záznamů: ' + sent + ' ✓'); loadList(); }
+  } finally { flushing = false; }
 }
 $('qgo').onclick = flushQueue;
-window.addEventListener('online', flushQueue);
+window.addEventListener('online', () => { showQueue(); flushQueue(); });
+window.addEventListener('offline', showQueue);
 
 // ================= seznam měřidel =================
 let meters = [], current = null;
@@ -410,10 +422,10 @@ function renderAll(noAnim) {
   renderSearchBar(); renderProgress();
   const list = visible().slice().sort((a, b) => (isDue(b) - isDue(a)) || ((b.overdueDays || 0) - (a.overdueDays || 0)));
   if (!list.length && meters.length) { $('list').innerHTML = '<p class="note" style="text-align:center;padding:18px 0">Žádné měřidlo neodpovídá hledání.</p>'; return; }
-  $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
+  $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) && !queuedIds.has(m.id) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
     '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + ((!building || bOf(m) !== building) && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + ' <span class="mid">– ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
-    (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
+    (queuedIds.has(m.id) ? '<span class="s warn">⏳ čeká na odeslání (uloženo v telefonu)</span>' : '') + (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
 }
 async function loadList() {
   if (!ENDPOINT) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Testovací verze zatím není propojená s testovací tabulkou (chybí adresa testovacího skriptu). Ostrá data se nepoužívají.</span>'; return; }
@@ -853,43 +865,31 @@ async function afterShot(cv) {
   $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide');
   $('dval').value = ''; $('dnote').value = ''; source = 'ručně'; aiValue = null; aiFailed = false;
   $('dlabel').textContent = 'Stav měřidla · ' + decText(decOf(current));
-  $('dstatus').innerHTML = '<span class="spin sm"></span>Čtu stav z fotky…';
-  const fail = () => { aiFailed = true; $('dstatus').textContent = 'Data se nepodařilo vyčíst. Zadej hodnotu ručně, nebo odešli jen fotku.'; };
-  try {
-    const r = await post({ token: token(), action: 'read', id: current.id, photo: photoB64 });
-    if (r.ok) { aiValue = roundTo(Number(r.value), decOf(current)); $('dval').value = fmtNum(aiValue); source = 'AI'; $('dstatus').textContent = 'Přečteno z fotky. Zkontroluj číslo podle fotky.'; }
-    else fail();
-  } catch (e) { fail(); }
+  $('dstatus').textContent = 'Zadej stav z měřidla, nebo nech prázdné: hodnotu přečte AI z fotky na pozadí.';
+  $('dsend').textContent = 'Odeslat';
 }
 let source = 'ručně', aiValue = null, aiFailed = false;
 $('dretake').onclick = () => openCamera();
 function backHome() { show('home'); loadList(); }
 $('dback').onclick = backHome;
 
-async function sendBody(body, btn, onOk) {
-  btn.disabled = true;
-  try {
-    const r = await post(body);
-    if (!r.ok) throw new Error(r.error || 'chyba');
-    onOk(r); backHome();
-  } catch (e) {
-    if (String(e.message) === 'token' || String(e.message) === 'data') toast('Odeslání se nepovedlo: odkaz není platný.');
-    else if (!(e instanceof TypeError)) toast('Odeslání se nepovedlo. Zkus to prosím znovu.', 6000);
-    else { try { await idbAdd(body); await showQueue(); toast('Bez signálu. Uloženo, odešle se samo.'); backHome(); } catch (e2) { toast('Nepodařilo se odeslat ani uložit.'); } }
-  } finally { btn.disabled = false; }
+// záznam se hned uloží v telefonu (IndexedDB) a odešle se na pozadí; bez signálu čeká, až se objeví
+async function enqueueSend(body, okMsg) {
+  body.clientId = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).slice(0, 20); body.takenAt = new Date().toISOString();
+  try { await idbAdd(body); } catch (e) { return toast('Záznam se nepodařilo uložit do telefonu.', 6000); }
+  await showQueue(); backHome();
+  if (okMsg === 'yay') yay(); else toast(okMsg, 4500);
+  flushQueue();
 }
 $('dsend').onclick = () => {
-  const value = roundTo(parseNum($('dval').value), decOf(current));
-  if (!isFinite(value) || $('dval').value.trim() === '') return toast('Zadej stav měřidla, nebo odešli jen fotku.');
-  if (current.last && value < current.last.value && !confirm('Zadaný stav (' + fmtNum(value) + ') je nižší než minule (' + fmtNum(current.last.value) + '). Opravdu odeslat?')) return;
-  const src = aiValue !== null ? (Math.abs(value - aiValue) < 1e-9 ? 'AI' : 'AI, opraveno ručně') : 'ručně';
-  sendBody({ token: token(), id: current.id, value, note: $('dnote').value.trim(), source: src, photo: photoB64 }, $('dsend'), r => { if (r.warn) toast('Odesláno, ale hodnota je nižší než minule.', 5000); else yay(); });
+  const raw = $('dval').value.trim(), has = raw !== '';
+  const value = has ? roundTo(parseNum(raw), decOf(current)) : null;
+  if (has && !isFinite(value)) return toast('Stav zadej jako číslo, nebo nech pole prázdné.');
+  if (has && current.last && value < current.last.value && !confirm('Zadaný stav (' + fmtNum(value) + ') je nižší než minule (' + fmtNum(current.last.value) + '). Opravdu odeslat?')) return;
+  const body = { token: token(), id: current.id, note: $('dnote').value.trim(), photo: photoB64 };
+  if (has) { body.value = value; body.source = 'ručně'; } else { body.noValue = true; body.aiRead = true; body.source = 'AI na pozadí'; }
+  enqueueSend(body, has ? 'yay' : 'Fotka uložena. Hodnotu přečte AI na pozadí.');
 };
-$('dphoto').onclick = () => {
-  if (!confirm('Fotka se odešle bez hodnoty. Někdo z výboru dostane e-mail, aby hodnotu doplnil ručně. Odeslat?')) return;
-  sendBody({ token: token(), id: current.id, noValue: true, note: $('dnote').value.trim(), source: 'bez hodnoty', aiFailed: aiFailed, photo: photoB64 }, $('dphoto'), () => toast('Fotka odeslána. Hodnotu doplní výbor z e-mailu.', 6000));
-};
-
 function yay() {
   const who = (lsGet('meridla.who') || '').split(' ')[0];
   $('yaytext').textContent = who ? 'Díky, ' + who + '!' : 'Odesláno, díky!';

@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.21.1';
+const SCRIPT_VERSION = '1.22.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -381,33 +381,46 @@ function doPost(e) {
   if (body.action === 'paperUpload') return ok_(paperUpload_(body));
 
   const meter = meters_().find(m => m.id === body.id);
-  const noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
-  const value = noValue ? NaN : (meter ? round_(Number(String(body.value).replace(',', '.')), meter.decimals) : Number(String(body.value).replace(',', '.')));
+  let noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
+  let value = noValue ? NaN : (meter ? round_(Number(String(body.value).replace(',', '.')), meter.decimals) : Number(String(body.value).replace(',', '.')));
   if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo)) return ok_({ ok: false, error: 'data' });
+  let source = body.source || '', aiFailed = !!body.aiFailed, aiNote = '';
+  // hodnota nebyla zadána a appka chce přečtení na pozadí: přečte ji AI z fotky (mimo zámek, trvá chvíli)
+  if (noValue && body.aiRead === true) {
+    const ai = readWithAi_(meter, body.photo);
+    if (ai.ok) { value = round_(Number(ai.value), meter.decimals); noValue = false; source = 'AI na pozadí'; aiNote = 'AI na pozadí, ověř podle fotky.'; }
+    else aiFailed = true;
+  }
+  // čas pořízení z telefonu (záznam pořízený offline se nezapíše až časem odeslání); nesmí být v budoucnu ani starší než 60 dní
+  let when = new Date();
+  if (body.takenAt) { const t = new Date(body.takenAt); if (!isNaN(t) && t.getTime() <= Date.now() + 5 * 60000 && t.getTime() > Date.now() - 60 * 86400000) when = t; }
+  // stejný záznam se při opakovaném odeslání (např. ztracená odpověď) nezapíše dvakrát
+  let rid = String(body.clientId || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 24);
+  if (!rid) rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
 
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
     const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS);
-    const prev = readings_().filter(x => x.id === meter.id && x.has).sort((a, b) => b.time - a.time)[0];
+    if (body.clientId && readings_().some(x => x.rid === rid)) return ok_({ ok: true, dup: true });
+    const prev = readings_().filter(x => x.id === meter.id && x.has && x.time <= when).sort((a, b) => b.time - a.time)[0];
     const diff = (!noValue && prev) ? Math.round((value - prev.value) * 1000) / 1000 : '';
-    let note = String(body.note || '').slice(0, 300);
+    let note = (aiNote + ' ' + String(body.note || '')).trim().slice(0, 300);
     if (!noValue && prev && value < prev.value) note = ('POZOR: nižší než minule. ' + note).trim();
 
     let fileUrl = '', blob = null;
     if (body.photo) {
-      const stamp = Utilities.formatDate(new Date(), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm');
+      const stamp = Utilities.formatDate(when, SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd_HH-mm');
       blob = Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', stamp + '_' + meter.id + '.jpg');
       fileUrl = DriveApp.getFolderById(props_().getProperty('FOLDER_ID')).createFile(blob).getUrl();
     }
     // sloupce: Čas, id, Měřidlo, Stav, Předchozí, Přírůstek, Poznámka, Fotka, Zdroj, Kdo, Budova, Chyba, ID záznamu
-    const rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
-    const err = noValue ? 'Hodnota nezapsána' + (body.aiFailed ? ' (OCR ji nepřečetlo)' : '') : '';
-    sheet.appendRow([new Date(), meter.id, meter.name, noValue ? '' : value, (!noValue && prev) ? prev.value : '', diff, note, fileUrl,
-      noValue ? 'bez hodnoty' : (body.source || ''), who, meter.building, err, rid]);
+    const err = noValue ? 'Hodnota nezapsána' + (aiFailed ? ' (OCR ji nepřečetlo)' : '') : '';
+    sheet.appendRow([when, meter.id, meter.name, noValue ? '' : value, (!noValue && prev) ? prev.value : '', diff, note, fileUrl,
+      noValue ? 'bez hodnoty' : source, who, meter.building, err, rid]);
 
     if (noValue) {
-      try { sendMissingMail_(meter, who, rid, blob, !!body.aiFailed); } catch (mailErr) { Logger.log('E-mail o chybějící hodnotě se nepodařilo odeslat: ' + mailErr.message); }
+      try { sendMissingMail_(meter, who, rid, blob, aiFailed); } catch (mailErr) { Logger.log('E-mail o chybějící hodnotě se nepodařilo odeslat: ' + mailErr.message); }
       return ok_({ ok: true, pendingValue: true });
     }
     const to = props_().getProperty('NOTIFY');
@@ -417,7 +430,7 @@ function doPost(e) {
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }
-    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') === 0 });
+    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value });
   } finally {
     lock.releaseLock();
   }
