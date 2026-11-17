@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.20.0';
+const SCRIPT_VERSION = '1.21.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -108,7 +108,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -411,7 +411,7 @@ function doPost(e) {
       return ok_({ ok: true, pendingValue: true });
     }
     const to = props_().getProperty('NOTIFY');
-    if (to) {
+    if (to && !mailsPaused_()) {
       MailApp.sendEmail(to, envTag_() + 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
         (meter.buildingLabel ? 'Budova: ' + meter.buildingLabel + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
@@ -453,7 +453,7 @@ function missingRecipients_() {
 
 function sendMissingMail_(meter, who, rid, blob, aiFailed) {
   const to = missingRecipients_().join(',');
-  if (!to) return;
+  if (!to || mailsPaused_()) return;
   const url = formUrl_(rid);
   const title = (meter.buildingLabel ? meter.buildingLabel + ': ' : '') + meter.name + (meter.place ? ' (' + meter.place + ')' : '');
   const html = '<div style="font-family:Arial,sans-serif;max-width:560px"><h3 style="margin:0 0 8px">Chybí hodnota měřidla</h3>' +
@@ -719,6 +719,22 @@ function checkMeters() {
 // ---------- upozornění e-mailem, když není dodržen interval ----------
 // Pravidla jsou v listu Upozornění: Komu (e-mail, víc adres odděl čárkou), Budova (prázdné = všechny), Dní po termínu (0 = v den termínu).
 // Každé pravidlo upozorní na dané měřidlo jen jednou za jeden termín (po novém odečtu se začíná znovu).
+// ---------- pozastavení e-mailů a reset záznamů (volá se z menu) ----------
+function mailsPaused_() { return props_().getProperty('MAIL_PAUSED') === '1'; }
+function toggleMails() {
+  const ui = SpreadsheetApp.getUi(), p = props_();
+  if (mailsPaused_()) { p.deleteProperty('MAIL_PAUSED'); ui.alert('E-maily jsou znovu zapnuté.'); }
+  else { p.setProperty('MAIL_PAUSED', '1'); ui.alert('Odesílání e-mailů je pozastavené (připomínky, odečty i chybějící hodnoty). Stejnou položkou menu ho znovu zapneš.'); }
+}
+function resetReadings() {
+  const ui = SpreadsheetApp.getUi(), sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS), n = sh ? sh.getLastRow() - 1 : 0;
+  if (n < 1) { ui.alert('List Odečty je prázdný.'); return; }
+  if (ui.alert('Resetovat záznamy', 'Opravdu vymazat všech ' + n + ' řádků z listu Odečty (hlavička zůstane)? Záloha se nedělá. Fotky na Disku zůstanou. Vrátit to půjde jen přes Soubor → Historie verzí.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try { sh.getRange(2, 1, n, sh.getLastColumn()).clearContent(); props_().deleteProperty('NOTIF'); } finally { lock.releaseLock(); }
+  ui.alert('Hotovo. Vymazáno ' + n + ' řádků.');
+}
+
 function installReminder() {
   ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'reminder').forEach(t => ScriptApp.deleteTrigger(t));
   ScriptApp.newTrigger('reminder').timeBased().everyDays(1).atHour(8).create();
@@ -735,6 +751,7 @@ function rules_() {
 }
 
 function reminder() {
+  if (mailsPaused_()) return;
   const rules = rules_();
   if (!rules.length) return;
   const props = props_(), all = readings_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
