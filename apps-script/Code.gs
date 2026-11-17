@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.25.0';
+const SCRIPT_VERSION = '1.26.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -315,27 +315,38 @@ function authorize() {
   const key = props_().getProperty('GEMINI_KEY');
   if (!key) { Logger.log('Chybí vlastnost GEMINI_KEY (Nastavení projektu -> Vlastnosti skriptu).'); return; }
   const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=5', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true });
-  Logger.log('Gemini odpověděl: HTTP ' + r.getResponseCode() + (r.getResponseCode() === 200 ? ' (klíč funguje)' : ' – ' + r.getContentText().replace(/s+/g, ' ').slice(0, 200)));
+  Logger.log('Gemini odpověděl: HTTP ' + r.getResponseCode() + (r.getResponseCode() === 200 ? ' (klíč funguje)' : ' – ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 200)));
   Logger.log('Vybrané modely: ' + JSON.stringify(geminiModels_()) + (AI_DETAIL ? ' / ' + AI_DETAIL : ''));
 }
 
 // ---------- čtení stavu z fotky (Gemini, klíč je jen zde v skriptu) ----------
 // Klíč: Nastavení projektu -> Vlastnosti skriptu -> GEMINI_KEY
 let AI_DETAIL = '';
+// model, který vrátil 404 (už není dostupný), se na 6 hodin přeskakuje
+function badModel_(name) {
+  try {
+    const ca = CacheService.getScriptCache();
+    let l = []; try { l = JSON.parse(ca.get('badmodels') || '[]'); } catch (e) {}
+    if (l.indexOf(name) < 0) l.push(name);
+    ca.put('badmodels', JSON.stringify(l), 21600); ca.remove('models');
+  } catch (e) {}
+}
+
 function geminiModels_() {
   const cache = CacheService.getScriptCache(), c = cache.get('models');
   if (c) return JSON.parse(c);
   const key = props_().getProperty('GEMINI_KEY');
   if (!key) return [];
   const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) { AI_DETAIL = 'seznam modelů HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/s+/g, ' ').slice(0, 150); return []; }
+  if (r.getResponseCode() !== 200) { AI_DETAIL = 'seznam modelů HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 150); return []; }
   const names = (JSON.parse(r.getContentText()).models || [])
     .filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0)
     .map(m => m.name.replace('models/', ''))
     .filter(n => /^gemini-/.test(n) && /flash/.test(n) && !/image|tts|live|audio|embed|robotics|computer|native|exp|thinking|customtools/.test(n));
-  const score = n => (/preview/.test(n) ? 0 : 1000) + parseFloat((n.match(/gemini-(d+(?:.d+)?)/) || [0, 0])[1]) * 10 - (/lite/.test(n) ? 5 : 0) + (/latest/.test(n) ? 0.5 : 0);
+  const score = n => (/preview/.test(n) ? 0 : 1000) + parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) * 10 - (/lite/.test(n) ? 5 : 0) + (/latest/.test(n) ? 0.5 : 0);
   names.sort((a, b) => score(b) - score(a));
-  const top = names.slice(0, 3);
+  let bad = []; try { bad = JSON.parse(cache.get('badmodels') || '[]'); } catch (e) {}
+  const top = names.filter(n => bad.indexOf(n) < 0).slice(0, 4);
   if (top.length) cache.put('models', JSON.stringify(top), 21600);
   return top;
 }
@@ -356,7 +367,7 @@ function readWithAi_(meter, b64) {
   const det = [];
   for (let i = 0; i < res.length; i++) {
     const r = res[i];
-    if (r.getResponseCode() !== 200) { det.push(models[i] + ' HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/s+/g, ' ').slice(0, 120)); continue; }
+    if (r.getResponseCode() !== 200) { det.push(models[i] + ' HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 120)); continue; }
     try {
       const j = JSON.parse(r.getContentText()), t = j.candidates[0].content.parts.map(p => p.text || '').join('');
       const v = JSON.parse(t.replace(/```json|```/g, '')).value;
@@ -676,7 +687,7 @@ function organizeDrive() {
   if (f2) { try { mv(DriveApp.getFolderById(f2), 'Místa měřidel'); } catch (e) { done.push('Místa měřidel: NEPODAŘILO SE (' + e.message + ')'); } }
   const text = 'Složka: ' + DRIVE_ROOT + ' / ' + dest.getName() + String.fromCharCode(10) + dest.getUrl() + String.fromCharCode(10) + String.fromCharCode(10) + done.join(String.fromCharCode(10));
   Logger.log(text);
-  try { SpreadsheetApp.getActive().toast(text.replace(/s+/g, ' ').slice(0, 280), 'Hotovo (podrobnosti v Protokolu spuštění)', 25); } catch (e) {}
+  try { SpreadsheetApp.getActive().toast(text.replace(/\s+/g, ' ').slice(0, 280), 'Hotovo (podrobnosti v Protokolu spuštění)', 25); } catch (e) {}
 }
 
 // ---------- testovací sada ----------
@@ -696,7 +707,7 @@ function createTestSet() {
     (made ? 'Vytvořena kopie tabulky: ' : 'Kopie tabulky už existovala: ') + copyName + nl + copy.getUrl() + nl + nl +
     'Dál (v kopii): Rozšíření → Apps Script → Vlastnosti skriptu: ENV = test (a GEMINI_KEY, NOTIFY), potom spustit setup, clearTestData a resetToken.';
   Logger.log(text);
-  try { SpreadsheetApp.getActive().toast(text.replace(/s+/g, ' ').slice(0, 280), 'Hotovo (podrobnosti v Protokolu spuštění)', 25); } catch (e) {}
+  try { SpreadsheetApp.getActive().toast(text.replace(/\s+/g, ' ').slice(0, 280), 'Hotovo (podrobnosti v Protokolu spuštění)', 25); } catch (e) {}
 }
 
 // Spouští se v TESTOVACÍM skriptu (ENV = test): smaže zkopírované odečty a tajné kódy z ostré tabulky.

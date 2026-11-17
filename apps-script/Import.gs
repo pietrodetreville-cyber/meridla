@@ -200,7 +200,7 @@ function paperTranscribe_(b64) {
     const res = UrlFetchApp.fetchAll(reqs);
     for (let i = 0; i < res.length; i++) {
       const r = res[i], code = r.getResponseCode();
-      if (code !== 200) { det.push(models[i] + ' HTTP ' + code + ': ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 110)); continue; }
+      if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code)); continue; }
       try {
         const j = JSON.parse(r.getContentText());
         if (!j.candidates || !j.candidates[0]) { det.push(models[i] + ': bez odpovědi' + (j.promptFeedback && j.promptFeedback.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : '')); continue; }
@@ -218,10 +218,10 @@ function paperTranscribe_(b64) {
         det.push(models[i] + ': žádná čitelná hodnota');
       } catch (e) { det.push(models[i] + ': ' + e.message); }
     }
-    if (det.some(d => /HTTP (429|5\d\d)/.test(d))) Utilities.sleep(3000 * (attempt + 1)); else break;
+    if (det.some(d => /přetížený|HTTP 5/.test(d))) Utilities.sleep(3000 * (attempt + 1)); else break;
   }
   Logger.log('Přepis archu selhal: ' + det.join(' | '));
-  return { ok: false, error: 'ai', detail: det.slice(0, 4).join(' | ') };
+  return { ok: false, error: 'ai', detail: (det.some(d => /kvóta/.test(d)) ? 'Kvóta AI klíče je vyčerpaná, zkontroluj limity a fakturaci v Google AI Studiu, nebo počkej. ' : '') + det.slice(0, 4).join(' | ') };
 }
 
 
