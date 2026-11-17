@@ -290,6 +290,25 @@ function importUiSave(rows) {
 // nahrání fotky archu přímo z okna v tabulce (běží pod účtem správce tabulky, PIN netřeba)
 function importUiUpload(photo) { return paperProcess_(photo); }
 
+// seznam fotek archů ve složce Papírové záznamy na Disku (výchozí zdroj v okně)
+function importUiFiles() {
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone(), folder = child_(driveRoot_(), PAPER_FOLDER), out = [], it = folder.getFiles();
+  while (it.hasNext() && out.length < 300) {
+    const f = it.next();
+    if (String(f.getMimeType()).indexOf('image/') !== 0) continue;
+    out.push({ id: f.getId(), name: f.getName(), t: f.getDateCreated().getTime(), date: Utilities.formatDate(f.getDateCreated(), tz, 'd. M. yyyy H:mm'), kb: Math.round(f.getSize() / 1024) });
+  }
+  out.sort((a, b) => b.t - a.t);
+  return { folderUrl: folder.getUrl(), files: out };
+}
+
+// přečte AI fotku ze složky podle id souboru
+function importUiRereadId(id) {
+  let f; try { f = DriveApp.getFileById(String(id || '')); } catch (e) { return { ok: false, error: 'nofile' }; }
+  if (f.getSize() > 15 * 1024 * 1024) return { ok: false, error: 'toobig' };
+  return paperRead_(Utilities.base64Encode(f.getBlob().getBytes()), f.getName());
+}
+
 // znovu pustí do čtení už uloženou fotku archu (např. když první čtení selhalo na přetížení AI)
 function importUiReread(name) {
   const it = child_(driveRoot_(), PAPER_FOLDER).getFilesByName(String(name || ''));

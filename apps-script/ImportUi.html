@@ -32,13 +32,20 @@
   .foot{padding:10px 12px;border-top:1px solid #e5e9ee;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .foot .msg{flex:1;min-width:160px;color:#374151}
   .muted{color:#6b7280;font-size:12px}
+  #pk{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;z-index:9}
+  #pk.on{display:flex}
+  #pkb{background:#fff;border-radius:12px;width:min(640px,94vw);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 12px 40px #0005}
+  #pkl{overflow:auto;padding:4px 8px;min-height:120px}
+  .pi{display:flex;gap:10px;align-items:center;padding:8px;border-bottom:1px solid #eef1f5;cursor:pointer;border-radius:6px}
+  .pi:hover{background:#f1f5fb}.pi.sel{background:#dbeafe}
+  .pi .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   @media (max-width:800px){.wrap{grid-template-columns:1fr;height:auto}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="pane">
-    <div class="ph"><b>Fotka archu</b><button class="sec" id="up" type="button">📷 Nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"><select id="arch"></select><button class="sec" id="reread" type="button" title="Pustí vybranou fotku znovu do čtení AI">🔄 Přečíst znovu</button></div>
+    <div class="ph"><b>Fotka archu</b><button class="sec" id="up" type="button">📷 Vybrat / nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"><select id="arch"></select><button class="sec" id="reread" type="button" title="Pustí vybranou fotku znovu do čtení AI">🔄 Přečíst znovu</button></div>
     <div id="img"><div class="muted" style="padding:20px">Vyber arch, nebo nejdřív nahraj fotku v aplikaci (🔒 Admin).</div></div>
   </div>
   <div class="pane">
@@ -55,6 +62,12 @@
     </div>
   </div>
 </div>
+<div id="pk"><div id="pkb">
+  <div class="ph"><b>Vyber fotku archu</b><span class="muted">zdroj: Google Disk · složka Papírové záznamy</span></div>
+  <div id="pkl"></div>
+  <div class="foot"><a id="pkf" href="#" target="_blank" class="muted">Otevřít složku na Disku</a><span class="msg"></span>
+    <button class="sec" id="pkpc" type="button">Z počítače…</button><button class="sec" id="pkx" type="button">Zavřít</button><button id="pkgo" type="button" disabled>Přečíst AI</button></div>
+</div></div>
 <script>
 let D = null, rows = [], busy = false;
 const $ = id => document.getElementById(id);
@@ -195,7 +208,7 @@ function uploadArch(file) {
   }).catch(() => { lock(false); setMsg('Fotku se nepodařilo zpracovat.', true); });
 }
 function aiDone(r) {
-  if (!r || !r.ok) { lock(false); return setMsg(r && r.error === 'nofile' ? 'Fotka ve složce Papírové záznamy nenalezena.' : 'Čtení se nepovedlo.', true); }
+  if (!r || !r.ok) { lock(false); return setMsg(r && r.error === 'nofile' ? 'Fotka ve složce Papírové záznamy nenalezena.' : r && r.error === 'toobig' ? 'Fotka je větší než 15 MB, zmenši ji.' : 'Čtení se nepovedlo.', true); }
   window.__newArch = r.name; load(true);
   setTimeout(() => setMsg(r.count ? 'AI přepsala ' + r.count + ' hodnot. Zkontroluj je podle fotky a oprav.' : 'AI hodnoty nepřečetla' + (r.detail ? ' (' + r.detail + ')' : '') + '. Zkus to za chvíli znovu, nebo doplň ručně tlačítkem + Řádek.', !r.count), 700);
 }
@@ -206,7 +219,36 @@ $('reread').onclick = () => {
   lock(true); setMsg('AI čte fotku znovu (až minutu)…');
   google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + e.message, true); }).importUiReread(n);
 };
-$('up').onclick = () => $('upf').click();
+let pkSel = null;
+function pkRender(files) {
+  const l = $('pkl'); l.textContent = '';
+  if (!files.length) { l.innerHTML = '<div class="muted" style="padding:16px">Složka je zatím prázdná. Nahraj fotky na Disk, nebo použij Z počítače…</div>'; return; }
+  files.forEach(f => {
+    const d = document.createElement('div'); d.className = 'pi';
+    const n = rows.filter(r => r.foto === f.name).length;
+    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = f.name; nm.title = f.name;
+    const dt = document.createElement('span'); dt.className = 'muted'; dt.textContent = f.date + ' · ' + f.kb + ' kB';
+    const bd = document.createElement('span'); bd.className = 'b ' + (n ? 'ok' : 'wait'); bd.textContent = n ? 'načteno: ' + n + ' řádků' : 'nepřečteno';
+    d.append(nm, dt, bd);
+    d.onclick = () => { pkSel = f; [...l.children].forEach(c => c.classList.remove('sel')); d.classList.add('sel'); $('pkgo').disabled = false; };
+    d.ondblclick = () => { pkSel = f; $('pkgo').click(); };
+    l.appendChild(d);
+  });
+}
+$('up').onclick = () => {
+  pkSel = null; $('pkgo').disabled = true; $('pk').classList.add('on'); $('pkl').innerHTML = '<div class="muted" style="padding:16px">Načítám seznam z Disku…</div>';
+  google.script.run.withSuccessHandler(r => { $('pkf').href = r.folderUrl; pkRender(r.files); }).withFailureHandler(e => { $('pkl').textContent = 'Seznam se nepodařilo načíst: ' + e.message; }).importUiFiles();
+};
+$('pkx').onclick = () => $('pk').classList.remove('on');
+$('pkpc').onclick = () => { $('pk').classList.remove('on'); $('upf').click(); };
+$('pkgo').onclick = () => {
+  if (!pkSel || busy) return;
+  const f = pkSel, have = rows.filter(r => r.foto === f.name && !/^VYŘAZENO/.test(r.status || '')).length;
+  if (have && !confirm('K tomuto archu už je v tabulce ' + have + ' řádků. Čtení přidá další, takže se mohou zdvojit (nechtěné pak odškrtni). Pokračovat?')) return;
+  $('pk').classList.remove('on'); lock(true); setMsg('AI čte fotku ' + f.name + ' (až minutu)…');
+  window.__newArch = f.name;
+  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + e.message, true); }).importUiRereadId(f.id);
+};
 $('upf').onchange = e => { uploadArch(e.target.files[0]); e.target.value = ''; };
 document.addEventListener('dragover', e => e.preventDefault());
 document.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.indexOf("image/") === 0) uploadArch(f); });
