@@ -140,6 +140,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 .brand{display:flex;align-items:center;gap:10px;margin:16px 0 12px}
 .brand img{width:44px;height:44px;border-radius:12px;box-shadow:0 3px 10px #0002}
 .brand h1{margin:0;font-size:1.2rem;line-height:1.15;flex:1}
+body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #homenote,body.adminmode #reload{display:none!important}
 .themebtn{flex:none;width:42px;height:42px;padding:0;border-radius:50%;background:var(--pop);color:var(--fg);border:1px solid var(--line);font-size:1.2rem;display:grid;place-items:center;box-shadow:0 2px 8px #0a2a4015}
 .meter{transition:transform .12s,box-shadow .2s;box-shadow:0 2px 8px #0a2a4010;animation:rise .45s both}
 .meter:active{transform:scale(.97)}
@@ -172,7 +173,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 <div id="envbar" class="hide">🧪 TESTOVACÍ VERZE · jiná tabulka než ostrý provoz</div>
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
-<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div>
+<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div>
 <div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
 <div class="sfind" id="sbar">
   <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat: budova, měřidlo, umístění…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
@@ -185,9 +186,8 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div id="list"></div>
   <p class="note" id="homenote"></p>
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
-  <button class="linkbtn" id="hadmin" type="button">🔒 Správce</button>
   <div id="hadminpanel" class="card hide">
-    <b>Správce · papírový záznam</b>
+    <div class="row" style="align-items:center"><b style="flex:1">Admin · papírový záznam</b><button class="sec" id="aclose" type="button" style="flex:none">Zavřít admin</button></div>
     <div class="note" style="margin:4px 0 8px">Vyfoť papírový arch s hodnotami. Fotka se uloží na Disk a AI z ní přepíše hodnoty do listu „Import z papíru" v tabulce, kde je zkontroluješ a zapíšeš.</div>
     <div class="row"><button class="sec" id="acamb" type="button">📷 Vyfotit arch</button><button class="sec" id="afileb" type="button">🖼️ Z galerie</button></div>
     <input id="acam" type="file" accept="image/*" capture="environment" class="hide"><input id="afile" type="file" accept="image/*" class="hide">
@@ -207,7 +207,7 @@ html:has(#splash:not(.out)){overflow:hidden}
     <div class="row"><button class="sec" id="mhist" type="button">📊 Detail měření</button></div>
     <div class="row"><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
     <div id="madminpanel" class="callout hide">
-      <b>Správce · fotka místa</b>
+      <b>Admin · fotka místa</b>
       <div class="note" style="margin:4px 0 8px">Nová fotka nahradí stávající. Stará zůstane na Disku ve složce Místa měřidel.</div>
       <div class="row" style="margin-top:6px"><button class="sec" id="pcamb" type="button">📷 Vyfotit místo</button><button class="sec" id="pfileb" type="button">🖼️ Z galerie</button></div>
       <input id="pcam" type="file" accept="image/*" capture="environment" class="hide"><input id="pfile" type="file" accept="image/*" class="hide">
@@ -215,7 +215,7 @@ html:has(#splash:not(.out)){overflow:hidden}
       <div class="note" id="pstat" style="margin-top:8px"></div>
       <div class="row"><button id="pupload" class="hide" type="button">Nahrát</button><button class="sec hide" id="pcancel" type="button">Zrušit</button></div>
       <hr class="sep">
-      <b>Správce · zpětný záznam z papíru</b>
+      <b>Admin · zpětný záznam z papíru</b>
       <div class="note" style="margin:4px 0 6px">Doplní odečet <b>bez fotky</b> k vybranému datu, třeba ze starých papírových záznamů. Dá se zapsat víc záznamů po sobě.</div>
       <div class="row" style="margin-top:6px"><div><label for="bfdate">Datum</label><input id="bfdate" type="date"></div><div><label for="bftime">Čas</label><input id="bftime" type="time" value="12:00"></div></div>
       <label for="bfval" id="bflabel">Stav měřidla</label><input id="bfval" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 12345,6">
@@ -224,7 +224,7 @@ html:has(#splash:not(.out)){overflow:hidden}
       <div class="row"><button id="bfsave" type="button">Zapsat záznam</button></div>
       <div class="note" id="bflog"></div>
     </div>
-    <button class="linkbtn" id="madmin" type="button">🔒 Správce</button>
+    <button class="linkbtn" id="madmin" type="button">🔒 Admin</button>
   </div>
 </section>
 
@@ -264,7 +264,7 @@ html:has(#splash:not(.out)){overflow:hidden}
   <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec" id="torch" type="button">💡 Baterka</button><button id="shot" type="button">Vyfotit</button></div>
 </div>
 <div id="lb" class="hide"><div id="lbstat"></div><img id="lbimg" alt="Fotka nebo plánek místa"></div>
-<div id="pinov" class="hide"><div class="card"><strong>Správce</strong><div class="note" style="margin:4px 0 10px">Zadej PIN správce.</div><input id="pininput" type="password" inputmode="numeric" autocomplete="off"><div class="warn" id="pinmsg" style="min-height:1.3em;margin:6px 0"></div><div class="row"><button class="sec" id="pincancel" type="button">Zrušit</button><button id="pingo" type="button">Odemknout</button></div></div></div>
+<div id="pinov" class="hide"><div class="card"><strong>Admin</strong><div class="note" style="margin:4px 0 10px">Zadej PIN admina.</div><input id="pininput" type="password" inputmode="numeric" autocomplete="off"><div class="warn" id="pinmsg" style="min-height:1.3em;margin:6px 0"></div><div class="row"><button class="sec" id="pincancel" type="button">Zrušit</button><button id="pingo" type="button">Odemknout</button></div></div></div>
 <div id="toast" class="hide"></div>
 <div id="yay" class="hide"><div class="tick">✓</div><b id="yaytext">Odesláno</b><span id="yaysub"></span></div>
 
@@ -277,7 +277,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.24.2';
+const VERSION = '1.25.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -482,7 +482,7 @@ $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(curre
 // ================= správce: nahrání fotky místa (PIN) =================
 let adminPin = null, adminUntil = 0, pendingPlace = '', pinFor = 'meter', pendingArch = '';
 const adminOn = () => adminPin && Date.now() < adminUntil;
-function adminLock() { adminPin = null; adminUntil = 0; pendingPlace = ''; pendingArch = ''; $('hadminpanel').classList.add('hide'); $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; $('aresult').textContent = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
+function adminLock() { document.body.classList.remove('adminmode'); $('hadmin').textContent = '🔒'; adminPin = null; adminUntil = 0; pendingPlace = ''; pendingArch = ''; $('hadminpanel').classList.add('hide'); $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; $('aresult').textContent = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
 function adminError(code) {
   return code === 'pin' ? 'Špatný PIN.' : code === 'locked' ? 'Příliš mnoho pokusů. Zkus to za 10 minut.' : code === 'nopin' ? 'PIN správce není ve skriptu nastaven (vlastnost ADMIN_PIN).' : code === 'drive' ? 'Fotku se nepodařilo uložit na Disk.' : code === 'nofolder' ? 'Chybí složka na fotky míst (spusť setup).' : 'Nahrání se nepovedlo. Zkus to prosím znovu.';
 }
@@ -499,15 +499,18 @@ $('pingo').onclick = async () => {
     const r = await post({ token: token(), action: 'adminCheck', pin });
     if (!r.ok) { $('pinmsg').textContent = adminError(r.error); return; }
     adminPin = pin; adminUntil = Date.now() + 10 * 60 * 1000;
-    $('pinov').classList.add('hide'); if (pinFor === 'home') $('hadminpanel').classList.remove('hide'); else { $('madminpanel').classList.remove('hide'); bfInit(); }
+    $('pinov').classList.add('hide'); if (pinFor === 'home') enterAdmin(); else { $('madminpanel').classList.remove('hide'); bfInit(); }
   } catch (e) { $('pinmsg').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('pingo').disabled = false; }
 };
 $('pininput').addEventListener('keydown', e => { if (e.key === 'Enter') $('pingo').click(); });
 // ---- foto papírového archu: uložení na Disk + AI přepis do listu Import z papíru ----
+// admin režim: místo měřidel se ukážou jen servisní boxy; ikona v záhlaví ho zapíná a vypíná
+function enterAdmin() { show('home'); document.body.classList.add('adminmode'); $('hadmin').textContent = '🔓'; $('hadminpanel').classList.remove('hide'); window.scrollTo(0, 0); }
+$('aclose').onclick = () => adminLock();
 $('hadmin').onclick = () => {
   pinFor = 'home';
-  if (adminOn()) { $('hadminpanel').classList.toggle('hide'); return; }
+  if (adminOn()) { if (document.body.classList.contains('adminmode')) adminLock(); else enterAdmin(); return; }
   $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
 };
 // arch se zmenší na 2000 px na delší straně (aby šla číst ručně psaná čísla)
@@ -529,7 +532,7 @@ $('afile').onchange = e => { pickArch(e.target.files[0]); e.target.value = ''; }
 $('acancel').onclick = () => { pendingArch = ''; $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; };
 const ymdCz = s => { const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(s || '')); return m ? (+m[3]) + '. ' + (+m[2]) + '. ' + m[1] : 'datum?'; };
 $('aupload').onclick = async () => {
-  if (!adminOn()) { adminLock(); return toast('Správce se po čase zamkl. Zadej PIN znovu.'); }
+  if (!adminOn()) { adminLock(); return toast('Admin se po čase zamkl. Zadej PIN znovu.'); }
   if (!pendingArch) return;
   $('aupload').disabled = true; $('aresult').textContent = '';
   $('astat').innerHTML = '<span class="spin sm"></span>Ukládám a čtu hodnoty z archu… (může trvat až půl minuty)';
@@ -576,7 +579,7 @@ async function bfSend(force) {
   finally { $('bfsave').disabled = false; }
 }
 $('bfsave').onclick = () => {
-  if (!adminOn()) { adminLock(); return toast('Správce se po čase zamkl. Zadej PIN znovu.'); }
+  if (!adminOn()) { adminLock(); return toast('Admin se po čase zamkl. Zadej PIN znovu.'); }
   if (!$('bfdate').value) return ($('bfstat').textContent = 'Vyber datum.');
   if ($('bfval').value.trim() === '' || !isFinite(parseNum($('bfval').value))) return ($('bfstat').textContent = 'Zadej stav měřidla.');
   if (new Date($('bfdate').value + 'T' + ($('bftime').value || '12:00')) > new Date()) return ($('bfstat').textContent = 'Datum nesmí být v budoucnosti.');
@@ -600,7 +603,7 @@ $('pcam').onchange = e => { pickPlace(e.target.files[0]); e.target.value = ''; }
 $('pfile').onchange = e => { pickPlace(e.target.files[0]); e.target.value = ''; };
 $('pcancel').onclick = () => { pendingPlace = ''; $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; };
 $('pupload').onclick = async () => {
-  if (!adminOn()) { adminLock(); return toast('Správce se po čase zamkl. Zadej PIN znovu.'); }
+  if (!adminOn()) { adminLock(); return toast('Admin se po čase zamkl. Zadej PIN znovu.'); }
   if (!pendingPlace) return;
   $('pupload').disabled = true; $('pstat').innerHTML = '<span class="spin sm"></span>Nahrávám…';
   try {
