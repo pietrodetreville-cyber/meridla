@@ -128,7 +128,7 @@ function paperUpload_(body) {
   try { child_(driveRoot_(), PAPER_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', name)); }
   catch (e) { return { ok: false, error: 'drive' }; }
   const ai = paperTranscribe_(body.photo);
-  if (!ai.ok) return { ok: true, name: name, count: 0, aiError: ai.error };
+  if (!ai.ok) return { ok: true, name: name, count: 0, aiError: ai.error, detail: ai.detail || '' };
   const sh = ensureImportSheet_();
   ai.rows.forEach(r => {
     let d = '';
@@ -139,33 +139,60 @@ function paperUpload_(body) {
 }
 
 // přepis tabulky z fotky (Gemini, klíč je jen ve vlastnostech skriptu)
+// vytáhne z odpovědi pole řádků i když je JSON obalený, v objektu nebo uříznutý (došel výstup)
+function parseRows_(t) {
+  t = String(t || '').split('```json').join('').split('```').join('').trim();
+  let v;
+  try { v = JSON.parse(t); } catch (e) {
+    const i = t.indexOf('[');
+    if (i < 0) return null;
+    const u = t.slice(i), k = u.lastIndexOf('}');
+    if (k < 0) return null;
+    try { v = JSON.parse(u.slice(0, k + 1) + ']'); } catch (e2) { return null; }
+  }
+  if (!Array.isArray(v) && v && typeof v === 'object') { const arr = Object.keys(v).map(x => v[x]).find(x => Array.isArray(x)); v = arr || [v]; }
+  return Array.isArray(v) ? v : null;
+}
+
 function paperTranscribe_(b64) {
   const key = props_().getProperty('GEMINI_KEY');
   if (!key) return { ok: false, error: 'nokey' };
   const models = geminiModels_();
   if (!models.length) return { ok: false, error: 'nomodel' };
-  const prompt = 'Na fotce je papírový arch s ručně psanými odečty měřidel v bytovém domě. Sloupce zleva: Č.P. (číslo popisné domu 271 až 275; řádky se značkou /2, /4, /6, /8, /10 patří k domu uvedenému těsně nad nimi), PLYNO a VODOMĚRY v m3 (vlevo plynoměr, vpravo vodoměr), ČÍSLO ELEKTROMĚRU, STAV ELEKTROMĚRU v kWh a DATUM. Ručně napsané datum se může táhnout přes víc řádků a platí pro všechny řádky vedle něj. Elektroměry zapsané u dolních řádků kolem nápisu KOTELNA patří k domu 271. Pod nápisem KOTELNA jsou plynoměry (PLYN), vodoměr a TUV (teplá užitková voda) kotelny. ' +
+  let known = '';
+  try { known = meters_().slice(0, 80).map(m => (m.building || '?') + ' ' + (m.typeName || m.name) + ' ' + m.id).join('; '); } catch (e) {}
+  const prompt = 'Na fotce je papírový arch (tabulka) s ručně psanými odečty měřidel v bytovém domě. Přečti z něj všechny řádky s hodnotou, ať má arch jakékoli rozložení sloupců. Typické rozložení: Č.P. (číslo popisné domu 271 až 275; řádky se značkou /2, /4, /6, /8, /10 patří k domu uvedenému těsně nad nimi), plynoměr a vodoměr v m3, číslo elektroměru, stav elektroměru v kWh a datum. Ručně napsané datum se může táhnout přes víc řádků a platí pro všechny řádky vedle něj. Řádky kolem nápisu KOTELNA: elektroměry patří k domu 271, plynoměry, vodoměr a TUV (teplá užitková voda) patří kotelně. ' +
+    (known ? 'Známá měřidla (budova, druh, id): ' + known + '. ' : '') +
     'Vrať JSON pole, jeden objekt pro každou přečtenou hodnotu: {"datum":"YYYY-MM-DD" nebo null,"budova":"271".."275" nebo "Kotelna","druh":"Vodoměr" nebo "Plynoměr" nebo "Elektroměr" nebo "TUV","cislo":"číslo elektroměru bez mezer, např. W060073, jinak prázdný řetězec","stav":číslo s desetinnou tečkou}. Hodnoty nevymýšlej, nečitelné vynech.';
-  const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
-  const res = UrlFetchApp.fetchAll(models.map(m => ({
+  const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 8192 } });
+  const reqs = models.map(m => ({
     url: 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', method: 'post',
-    contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true })));
-  for (const r of res) {
-    if (r.getResponseCode() !== 200) continue;
-    try {
-      const j = JSON.parse(r.getContentText()), t = j.candidates[0].content.parts.map(p => p.text || '').join('');
-      let arr = JSON.parse(t.replace(/```json|```/g, ''));
-      if (!Array.isArray(arr) && arr && Array.isArray(arr.radky)) arr = arr.radky;
-      if (!Array.isArray(arr)) continue;
-      const rows = arr.map(o => ({
-        datum: /^\d{4}-\d{2}-\d{2}$/.test(String(o.datum || '')) ? String(o.datum) : '',
-        budova: String(o.budova === undefined || o.budova === null ? '' : o.budova).trim(),
-        druh: normType_(o.druh),
-        cislo: String(o.cislo || '').replace(/\s/g, '').toUpperCase(),
-        stav: (o.stav === undefined || o.stav === null || String(o.stav).trim() === '') ? NaN : Number(String(o.stav).replace(',', '.'))
-      })).filter(o => isFinite(o.stav));
-      if (rows.length) return { ok: true, rows: rows };
-    } catch (e) {}
+    contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true }));
+  const det = [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const res = UrlFetchApp.fetchAll(reqs);
+    for (let i = 0; i < res.length; i++) {
+      const r = res[i], code = r.getResponseCode();
+      if (code !== 200) { det.push(models[i] + ' HTTP ' + code + ': ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 110)); continue; }
+      try {
+        const j = JSON.parse(r.getContentText());
+        if (!j.candidates || !j.candidates[0]) { det.push(models[i] + ': bez odpovědi' + (j.promptFeedback && j.promptFeedback.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : '')); continue; }
+        const t = ((j.candidates[0].content && j.candidates[0].content.parts) || []).map(p => p.text || '').join('');
+        const arr = parseRows_(t);
+        if (!arr) { det.push(models[i] + ': odpověď není tabulka: ' + t.replace(/\s+/g, ' ').slice(0, 80)); continue; }
+        const rows = arr.map(o => ({
+          datum: /^\d{4}-\d{2}-\d{2}$/.test(String(o.datum || '')) ? String(o.datum) : '',
+          budova: String(o.budova === undefined || o.budova === null ? '' : o.budova).trim(),
+          druh: normType_(o.druh),
+          cislo: String(o.cislo || '').replace(/\s/g, '').toUpperCase(),
+          stav: (o.stav === undefined || o.stav === null || String(o.stav).trim() === '') ? NaN : Number(String(o.stav).replace(/\s/g, '').replace(',', '.'))
+        })).filter(o => isFinite(o.stav));
+        if (rows.length) return { ok: true, rows: rows };
+        det.push(models[i] + ': žádná čitelná hodnota');
+      } catch (e) { det.push(models[i] + ': ' + e.message); }
+    }
+    if (det.some(d => /HTTP (429|5\d\d)/.test(d))) Utilities.sleep(2500); else break;
   }
-  return { ok: false, error: 'ai' };
+  Logger.log('Přepis archu selhal: ' + det.join(' | '));
+  return { ok: false, error: 'ai', detail: det.slice(0, 4).join(' | ') };
 }

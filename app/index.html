@@ -277,7 +277,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.24.1';
+const VERSION = '1.24.2';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -538,7 +538,7 @@ $('aupload').onclick = async () => {
     if (!r.ok) { if (r.error === 'pin' || r.error === 'locked') adminLock(); $('astat').textContent = adminError(r.error); return; }
     adminUntil = Date.now() + 10 * 60 * 1000;
     pendingArch = ''; $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide');
-    if (r.aiError || !r.count) { $('astat').textContent = 'Fotka je uložená (' + r.name + '), ale AI z ní hodnoty nepřečetla. Přepiš je ručně do listu „Import z papíru“ v tabulce.'; return; }
+    if (r.aiError || !r.count) { $('astat').textContent = 'Fotka je uložená (' + r.name + '), ale AI z ní hodnoty nepřečetla. Přepiš je ručně do listu „Import z papíru“ v tabulce.' + (r.detail ? ' Důvod: ' + String(r.detail).slice(0, 300) : ''); return; }
     $('astat').textContent = 'Uloženo (' + r.name + '). AI přepsala ' + r.count + ' hodnot do listu „Import z papíru“. Zkontroluj je a oprav v tabulce, pak v menu Měřidla → Import z papíru zvol Náhled a Zapsat hodnoty.';
     $('aresult').innerHTML = (r.rows || []).slice(0, 40).map(x => '✓ ' + ymdCz(x.datum) + ' · ' + (x.budova || '?') + ' ' + (x.druh || '') + (x.cislo ? ' ' + x.cislo : '') + ' = ' + fmtNum(x.stav)).join('<br>');
     toast('Arch přepsán, zkontroluj list Import z papíru', 5000);
