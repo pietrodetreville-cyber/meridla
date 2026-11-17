@@ -139,8 +139,14 @@ html:has(#splash:not(.out)){overflow:hidden}
 .bar i{display:block;height:100%;width:0;border-radius:999px;background:var(--acc);transition:width .8s cubic-bezier(.2,.8,.2,1)}
 .brand{display:flex;align-items:center;gap:10px;margin:16px 0 12px}
 .brand img{width:44px;height:44px;border-radius:12px;box-shadow:0 3px 10px #0002}
-.brand h1{margin:0;font-size:1.2rem;line-height:1.15;flex:1}
+.brand h1{margin:0;font-size:1.1rem;line-height:1.15;flex:1;min-width:0}
+.brand h1 .note{display:block;font-size:.72rem;font-weight:500;margin-top:2px}
 body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #homenote,body.adminmode #reload{display:none!important}
+.tools{flex:none;display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--pop);border:1px solid var(--line);box-shadow:0 2px 8px #0a2a4015}
+.tools .themebtn{width:34px;height:34px;font-size:1.05rem;border:0;box-shadow:none;background:transparent}
+.tools .themebtn:active{background:var(--line)}
+#hrefresh.spin{animation:rot .8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
 .themebtn{flex:none;width:42px;height:42px;padding:0;border-radius:50%;background:var(--pop);color:var(--fg);border:1px solid var(--line);font-size:1.2rem;display:grid;place-items:center;box-shadow:0 2px 8px #0a2a4015}
 .meter{transition:transform .12s,box-shadow .2s;box-shadow:0 2px 8px #0a2a4010;animation:rise .45s both}
 .meter:active{transform:scale(.97)}
@@ -173,7 +179,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div id="envbar" class="hide">🧪 TESTOVACÍ VERZE · jiná tabulka než ostrý provoz</div>
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
-<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div>
+<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
 <div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
 <div class="sfind" id="sbar">
   <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat: budova, měřidlo, umístění…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
@@ -277,7 +283,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.25.0';
+const VERSION = '1.25.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -442,6 +448,7 @@ async function loadList() {
   renderAll();
 }
 $('reload').onclick = loadList;
+$('hrefresh').onclick = async () => { const b = $('hrefresh'); b.classList.add('spin'); try { await flushQueue(); await loadList(); } finally { setTimeout(() => b.classList.remove('spin'), 400); } };
 $('list').addEventListener('click', e => {
   const b = e.target.closest('.meter'); if (!b) return;
   current = meters.find(m => m.id === b.dataset.id); if (current) openMeter(current);
