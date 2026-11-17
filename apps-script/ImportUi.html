@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.35 Arial,Helvetica,sans-serif;color:#1f2933;background:#f4f6f9}
+  .wrap{display:grid;grid-template-columns:minmax(300px,38%) 1fr;gap:12px;height:100vh;padding:12px}
+  .pane{background:#fff;border:1px solid #d9dee5;border-radius:10px;display:flex;flex-direction:column;min-height:0;min-width:0}
+  .ph{padding:10px 12px;border-bottom:1px solid #e5e9ee;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .ph b{flex:1}
+  select,input,button{font:inherit}
+  select,input{border:1px solid #c5ccd6;border-radius:6px;padding:5px 6px;background:#fff;min-width:0}
+  button{border:0;border-radius:8px;padding:8px 14px;background:#2563eb;color:#fff;cursor:pointer;font-weight:600}
+  button.sec{background:#e8edf5;color:#1f2933}
+  button.warn{background:#b45309}
+  button:disabled{opacity:.5;cursor:default}
+  #img{flex:1;overflow:auto;padding:8px;text-align:center;min-height:0}
+  #img img{max-width:100%;cursor:zoom-in;border-radius:6px}
+  #img img.full{max-width:none;cursor:zoom-out}
+  #tw{flex:1;overflow:auto;min-height:0}
+  table{border-collapse:collapse;width:100%}
+  th{position:sticky;top:0;background:#eef2f7;text-align:left;font-size:12px;padding:6px;border-bottom:1px solid #d9dee5;z-index:1}
+  td{padding:3px 4px;border-bottom:1px solid #eef1f5;vertical-align:middle}
+  td input,td select{width:100%}
+  td.n input{text-align:right}
+  tr.done td{background:#f0fdf4;color:#555}
+  tr.off td{opacity:.45}
+  .b{display:inline-block;border-radius:999px;padding:2px 8px;font-size:12px;font-weight:700;white-space:normal}
+  .ok{background:#dcfce7;color:#166534}.err{background:#fee2e2;color:#991b1b}.wait{background:#fef3c7;color:#92400e}.off2{background:#e5e7eb;color:#374151}
+  .foot{padding:10px 12px;border-top:1px solid #e5e9ee;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+  .foot .msg{flex:1;min-width:160px;color:#374151}
+  .muted{color:#6b7280;font-size:12px}
+  @media (max-width:800px){.wrap{grid-template-columns:1fr;height:auto}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pane">
+    <div class="ph"><b>Fotka archu</b><select id="arch"></select></div>
+    <div id="img"><div class="muted" style="padding:20px">Vyber arch, nebo nejdřív nahraj fotku v aplikaci (🔒 Admin).</div></div>
+  </div>
+  <div class="pane">
+    <div class="ph"><b>Hodnoty k zápisu</b>
+      <select id="filt"></select>
+      <button class="sec" id="add" type="button">+ Řádek</button>
+    </div>
+    <div id="tw"><table><thead><tr><th style="width:34px" title="Zahrnout do zápisu">✓</th><th style="width:100px">Datum</th><th style="width:90px">Budova</th><th style="width:100px">Druh</th><th style="min-width:210px">Měřidlo</th><th style="width:100px">Stav</th><th style="width:190px">Výsledek</th></tr></thead><tbody id="rows"></tbody></table></div>
+    <div class="foot">
+      <span class="msg" id="msg">Načítám…</span>
+      <button class="sec" id="save" type="button">Uložit</button>
+      <button class="sec" id="check" type="button">Zkontrolovat</button>
+      <button id="write" type="button">Zapsat do měření</button>
+    </div>
+  </div>
+</div>
+<script>
+let D = null, rows = [], busy = false;
+const $ = id => document.getElementById(id);
+const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+function setMsg(t, bad) { const m = $('msg'); m.textContent = t; m.style.color = bad ? '#991b1b' : '#374151'; }
+function lock(on) { busy = on; ['save', 'check', 'write', 'add'].forEach(i => $(i).disabled = on); }
+
+function opt(sel, value, label) { const o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; sel.appendChild(o); return o; }
+function selectOf(values, current, blank) {
+  const s = document.createElement('select');
+  opt(s, '', blank || '—');
+  const list = values.slice(); if (current && list.indexOf(current) < 0) list.push(current);
+  list.forEach(v => opt(s, v));
+  s.value = current || '';
+  return s;
+}
+function meterSelect(current) {
+  const s = document.createElement('select');
+  opt(s, '', 'automaticky (budova + druh)');
+  let cur = current || '';
+  const hit = D.meters.find(m => norm(m.id) === norm(cur));
+  if (hit) cur = hit.id;
+  D.meters.forEach(m => opt(s, m.id, m.label));
+  if (cur && !hit) opt(s, cur, 'číslo: ' + cur);
+  s.value = cur;
+  return s;
+}
+function badge(status, mid) {
+  const b = document.createElement('span'); b.className = 'b';
+  const t = String(status || '');
+  if (/^ZAPSÁNO/.test(t)) { b.classList.add('ok'); b.textContent = t; }
+  else if (/^OK/.test(t)) { b.classList.add('ok'); b.textContent = t.replace(/^OK, zapíše se/, 'Zapíše se'); }
+  else if (/^CHYBA/.test(t)) { b.classList.add('err'); b.textContent = t.replace(/^CHYBA: /, ''); }
+  else if (/^PŘESKOČENO/.test(t)) { b.classList.add('wait'); b.textContent = t; }
+  else if (/^VYŘAZENO/.test(t)) { b.classList.add('off2'); b.textContent = 'vyřazeno'; }
+  else { b.classList.add('wait'); b.textContent = t || 'K ověření'; }
+  return b;
+}
+
+function render() {
+  const f = $('filt').value, tb = $('rows'); tb.textContent = '';
+  rows.forEach((r, i) => {
+    const st = String(r.status || '');
+    if (f === 'todo' && /^(ZAPSÁNO|VYŘAZENO)/.test(st)) return;
+    if (f.indexOf('arch:') === 0 && r.foto !== f.slice(5)) return;
+    const done = /^ZAPSÁNO/.test(st), tr = document.createElement('tr');
+    tr.className = done ? 'done' : (r.exclude ? 'off' : '');
+    const td = () => tr.appendChild(document.createElement('td'));
+    const c0 = td(), ck = document.createElement('input'); ck.type = 'checkbox'; ck.checked = !r.exclude && !/^VYŘAZENO/.test(st); ck.disabled = done; ck.title = 'Zahrnout do zápisu';
+    ck.onchange = () => { r.exclude = !ck.checked; tr.className = r.exclude ? 'off' : ''; }; c0.appendChild(ck);
+    if (/^VYŘAZENO/.test(st) && r.exclude === undefined) r.exclude = true;
+    const inp = (key, cls, ph) => { const c = td(); if (cls) c.className = cls; const e = document.createElement('input'); e.value = r[key] || ''; e.disabled = done; if (ph) e.placeholder = ph; e.oninput = () => { r[key] = e.value; r.dirty = true; }; c.appendChild(e); return e; };
+    inp('datum', '', 'd. m. rrrr');
+    const sel = (key, values, blank) => { const c = td(), s = selectOf(values, r[key], blank); s.disabled = done; s.onchange = () => { r[key] = s.value; r.dirty = true; }; c.appendChild(s); };
+    sel('budova', D.buildings); sel('druh', D.types);
+    const cm = td(), ms = meterSelect(r.cislo); ms.disabled = done; ms.onchange = () => { r.cislo = ms.value; r.dirty = true; }; cm.appendChild(ms);
+    inp('stav', 'n');
+    const cs = td(); cs.appendChild(badge(st, r.mid));
+    if (r.foto) { const sp = document.createElement('div'); sp.className = 'muted'; sp.textContent = r.foto; cs.appendChild(sp); }
+    tb.appendChild(tr);
+  });
+  if (!tb.children.length) { const tr = document.createElement('tr'), c = document.createElement('td'); c.colSpan = 7; c.className = 'muted'; c.style.padding = '16px'; c.textContent = 'Žádné řádky. Přidej řádek, nebo vyfoť arch v aplikaci.'; tr.appendChild(c); tb.appendChild(tr); }
+}
+
+function fillFilter() {
+  const f = $('filt'), keep = f.value; f.textContent = '';
+  opt(f, 'all', 'Všechny řádky'); opt(f, 'todo', 'Jen nezapsané');
+  D.arches.forEach(a => opt(f, 'arch:' + a, 'Arch ' + a));
+  f.value = [...f.options].some(o => o.value === keep) ? keep : 'todo';
+}
+function fillArches() {
+  const s = $('arch'); s.textContent = ''; opt(s, '', '— vyber arch —');
+  D.arches.slice().reverse().forEach(a => opt(s, a));
+  if (D.arches.length) { s.value = D.arches[D.arches.length - 1]; showPhoto(); }
+}
+function showPhoto() {
+  const n = $('arch').value, box = $('img');
+  if (!n) { box.innerHTML = '<div class="muted" style="padding:20px">Vyber arch.</div>'; return; }
+  box.innerHTML = '<div class="muted" style="padding:20px">Načítám fotku…</div>';
+  google.script.run.withSuccessHandler(u => {
+    box.textContent = '';
+    if (!u) { box.innerHTML = '<div class="muted" style="padding:20px">Fotka ve složce Papírové záznamy nenalezena.</div>'; return; }
+    const im = document.createElement('img'); im.src = u; im.onclick = () => im.classList.toggle('full'); box.appendChild(im);
+  }).withFailureHandler(e => { box.textContent = 'Fotku se nepodařilo načíst: ' + e.message; }).importUiPhoto(n);
+}
+
+function load(keepMsg) {
+  lock(true);
+  google.script.run.withSuccessHandler(d => {
+    D = d; rows = d.rows.map(r => Object.assign({}, r));
+    fillFilter(); if (!$('arch').options.length) fillArches(); render(); lock(false);
+    if (!keepMsg) setMsg(rows.length ? 'Načteno řádků: ' + rows.length + '. Oprav hodnoty podle fotky a zvol Zkontrolovat.' : 'List je prázdný.');
+  }).withFailureHandler(e => { lock(false); setMsg('Chyba načtení: ' + e.message, true); }).importUiData();
+}
+
+function payload() {
+  return rows.filter(r => !/^ZAPSÁNO/.test(r.status || '')).map(r => ({ row: r.row, datum: r.datum, budova: r.budova, druh: r.druh, cislo: r.cislo, stav: r.stav, poznamka: r.poznamka, foto: r.foto, exclude: !!r.exclude }));
+}
+function saveThen(next, label) {
+  lock(true); setMsg('Ukládám…');
+  google.script.run.withSuccessHandler(() => next()).withFailureHandler(e => { lock(false); setMsg('Uložení se nepovedlo: ' + e.message, true); }).importUiSave(payload());
+}
+$('save').onclick = () => saveThen(() => { setMsg('Uloženo.'); load(true); setTimeout(() => setMsg('Uloženo.'), 400); });
+$('check').onclick = () => saveThen(() => {
+  setMsg('Kontroluji…');
+  google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg(r.text || 'Zkontrolováno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Kontrola selhala: ' + e.message, true); }).importUiRun(false);
+});
+$('write').onclick = () => {
+  const n = rows.filter(r => !r.exclude && !/^(ZAPSÁNO|VYŘAZENO)/.test(r.status || '')).length;
+  if (!n) return setMsg('Není co zapsat.', true);
+  if (!confirm('Opravdu zapsat ' + n + ' řádků do měření? Zapsané řádky se označí a podruhé se nezapíšou.')) return;
+  saveThen(() => {
+    setMsg('Zapisuji…');
+    google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg(r.text || 'Zapsáno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Zápis selhal: ' + e.message, true); }).importUiRun(true);
+  });
+};
+$('add').onclick = () => {
+  const last = rows.filter(r => r.datum).pop();
+  rows.push({ row: 0, datum: last ? last.datum : '', budova: '', druh: '', cislo: '', stav: '', poznamka: '', foto: $('arch').value || '', status: '' });
+  $('filt').value = 'all'; render(); $('tw').scrollTop = 1e9;
+};
+$('filt').onchange = render;
+$('arch').onchange = showPhoto;
+load();
+</script>
+</body>
+</html>

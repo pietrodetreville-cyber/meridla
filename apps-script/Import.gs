@@ -64,11 +64,11 @@ function importRun_(write) {
   const sh = ensureImportSheet_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   const data = sh.getDataRange().getValues();
   const say = t => { try { SpreadsheetApp.getActive().toast(t, write ? 'Import hotov' : 'Náhled hotov', 20); } catch (e) {} };
-  if (data.length < 2) { Logger.log('List „' + SHEET_IMPORT + '“ je prázdný.'); say('List je prázdný.'); return; }
+  if (data.length < 2) { Logger.log('List „' + SHEET_IMPORT + '“ je prázdný.'); say('List je prázdný.'); return 'List je prázdný.'; }
   const head = data[0].map(h => String(h).normalize('NFC').trim().toLowerCase());
   const find = n => head.indexOf(n);
   const c = { date: find('datum'), b: find('budova'), t: find('druh'), n: find('číslo měřidla'), v: find('stav'), note: find('poznámka'), photo: find('fotka archu'), st: find('stav importu'), id: find('měřidlo (id)') };
-  if (c.date < 0 || c.v < 0) { Logger.log('V listu chybí sloupec Datum nebo Stav.'); say('V listu chybí sloupec Datum nebo Stav.'); return; }
+  if (c.date < 0 || c.v < 0) { Logger.log('V listu chybí sloupec Datum nebo Stav.'); say('V listu chybí sloupec Datum nebo Stav.'); return 'V listu chybí sloupec Datum nebo Stav.'; }
   if (c.st < 0) { c.st = head.length; head.push('stav importu'); sh.getRange(1, c.st + 1).setValue('Stav importu'); }
   if (c.id < 0) { c.id = head.length; head.push('měřidlo (id)'); sh.getRange(1, c.id + 1).setValue('Měřidlo (id)'); }
   const meters = meters_(), cnt = { ok: 0, wrote: 0, dup: 0, err: 0, skip: 0 };
@@ -77,7 +77,7 @@ function importRun_(write) {
   try {
     for (let i = 1; i < data.length; i++) {
       const r = data[i], rowNo = i + 1, cell = k => (c[k] >= 0 && r[c[k]] !== undefined ? r[c[k]] : '');
-      if (/^ZAPSÁNO/.test(String(cell('st')))) { cnt.skip++; continue; }
+      if (/^(ZAPSÁNO|VYŘAZENO)/.test(String(cell('st')))) { cnt.skip++; continue; }
       const raw = String(cell('v')).trim();
       if (raw === '' && String(cell('date')).trim() === '' && String(cell('n')).trim() === '' && String(cell('b')).trim() === '') continue;
       const when = parseImportDate_(cell('date'), tz), value = raw === '' ? NaN : Number(raw.replace(/\s/g, '').replace(',', '.'));
@@ -109,10 +109,11 @@ function importRun_(write) {
     if (write) lock.releaseLock();
   }
   const text = write
-    ? 'Zapsáno: ' + cnt.wrote + ', už zapsáno: ' + cnt.dup + ', chyby: ' + cnt.err + (cnt.skip ? ', dříve zapsané přeskočeno: ' + cnt.skip : '')
-    : 'Zapíše se: ' + cnt.ok + ', chyby: ' + cnt.err + (cnt.skip ? ', dříve zapsané: ' + cnt.skip : '') + '. Výsledek je ve sloupci Stav importu.';
+    ? 'Zapsáno: ' + cnt.wrote + ', už zapsáno: ' + cnt.dup + ', chyby: ' + cnt.err + (cnt.skip ? ', přeskočeno (zapsané a vyřazené): ' + cnt.skip : '')
+    : 'Zapíše se: ' + cnt.ok + ', chyby: ' + cnt.err + (cnt.skip ? ', přeskočeno (zapsané a vyřazené): ' + cnt.skip : '') + '. Výsledek je ve sloupci Stav importu.';
   Logger.log(text);
   say(text);
+  return text;
 }
 
 function importPreview() { importRun_(false); }
@@ -195,4 +196,77 @@ function paperTranscribe_(b64) {
   }
   Logger.log('Přepis archu selhal: ' + det.join(' | '));
   return { ok: false, error: 'ai', detail: det.slice(0, 4).join(' | ') };
+}
+
+
+// ---------- přehledné okno pro import (menu Měřidla → Import z papíru → Otevřít přehled) ----------
+function importUi() {
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutputFromFile('ImportUi').setWidth(1200).setHeight(780), 'Import z papíru');
+}
+
+// sloupce listu podle názvu (chybějící se doplní na konec)
+function importCols_(sh) {
+  let head = sh.getLastColumn() ? sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).normalize('NFC').trim().toLowerCase()) : [];
+  IMPORT_HEAD.forEach(h => { if (head.indexOf(h.toLowerCase()) < 0) { head.push(h.toLowerCase()); sh.getRange(1, head.length).setValue(h); } });
+  const f = n => head.indexOf(n);
+  return { n: head.length, date: f('datum'), b: f('budova'), t: f('druh'), num: f('číslo měřidla'), v: f('stav'), note: f('poznámka'), photo: f('fotka archu'), st: f('stav importu'), id: f('měřidlo (id)') };
+}
+
+function importUiData() {
+  const sh = ensureImportSheet_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone(), c = importCols_(sh);
+  const data = sh.getLastRow() > 1 ? sh.getRange(1, 1, sh.getLastRow(), c.n).getValues() : [[]];
+  const rows = [], arches = [];
+  for (let i = 1; i < data.length; i++) {
+    const r = data[i], g = k => (r[c[k]] === undefined || r[c[k]] === null ? '' : r[c[k]]);
+    if (String(g('v')).trim() === '' && String(g('date')).trim() === '' && String(g('num')).trim() === '' && String(g('b')).trim() === '') continue;
+    const d = parseImportDate_(g('date'), tz), photo = String(g('photo')).trim();
+    if (photo && arches.indexOf(photo) < 0) arches.push(photo);
+    rows.push({ row: i + 1, datum: d ? Utilities.formatDate(d, tz, 'd. M. yyyy') : String(g('date')), budova: String(g('b')).trim(), druh: String(g('t')).trim(), cislo: String(g('num')).trim(),
+      stav: String(g('v')).trim(), poznamka: String(g('note')), foto: photo, status: String(g('st')), mid: String(g('id')) });
+  }
+  const ms = meters_();
+  const uniq = a => a.filter((x, i) => x && a.indexOf(x) === i);
+  return {
+    rows: rows, arches: arches,
+    meters: ms.map(m => ({ id: m.id, label: (m.buildingLabel || m.building || '?') + ' · ' + m.name + ' · ' + m.id })).sort((a, b) => a.label.localeCompare(b.label, 'cs')),
+    buildings: uniq(ms.map(m => String(m.building || '')).concat(['Kotelna'])).sort((a, b) => a.localeCompare(b, 'cs')),
+    types: uniq(ms.map(m => String(m.typeName || '')).concat(['Vodoměr', 'Plynoměr', 'Elektroměr', 'TUV']))
+  };
+}
+
+// uloží úpravy z okna; řádky se nikdy nemažou, vyřazený řádek dostane stav „VYŘAZENO“ a import ho přeskočí
+function importUiSave(rows) {
+  const sh = ensureImportSheet_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone(), c = importCols_(sh);
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    const last = sh.getLastRow(), old = last > 1 ? sh.getRange(1, 1, last, c.n).getValues() : [[]];
+    let saved = 0;
+    (rows || []).forEach(x => {
+      const isNew = !x.row || x.row < 2 || x.row > last;
+      const cur = isNew ? new Array(c.n).fill('') : old[x.row - 1].slice();
+      const oldStatus = String(cur[c.st] || '');
+      if (/^ZAPSÁNO/.test(oldStatus)) return;
+      const d = parseImportDate_(x.datum, tz), vRaw = String(x.stav === undefined || x.stav === null ? '' : x.stav).trim();
+      const vNum = vRaw === '' ? '' : Number(vRaw.replace(/\s/g, '').replace(',', '.'));
+      const next = { date: d || String(x.datum || '').trim(), b: String(x.budova || '').trim(), t: String(x.druh || '').trim(), num: String(x.cislo || '').trim(), v: (vNum === '' || !isFinite(vNum)) ? vRaw : vNum, note: String(x.poznamka || ''), photo: String(x.foto || '') };
+      const same = k => String(cur[c[k]] instanceof Date ? Utilities.formatDate(cur[c[k]], tz, 'yyyy-MM-dd') : cur[c[k]]).trim() === String(next[k] instanceof Date ? Utilities.formatDate(next[k], tz, 'yyyy-MM-dd') : next[k]).trim();
+      const changed = isNew || !['date', 'b', 't', 'num', 'v', 'note', 'photo'].every(same);
+      Object.keys(next).forEach(k => { cur[c[k]] = next[k]; });
+      if (x.exclude) cur[c.st] = 'VYŘAZENO (nezapíše se)';
+      else if (changed || /^VYŘAZENO/.test(oldStatus) || !oldStatus) cur[c.st] = 'K ověření';
+      if (isNew) { sh.appendRow(cur); const rn = sh.getLastRow(); if (d) sh.getRange(rn, c.date + 1).setNumberFormat('d. M. yyyy'); }
+      else { sh.getRange(x.row, 1, 1, c.n).setValues([cur]); if (d) sh.getRange(x.row, c.date + 1).setNumberFormat('d. M. yyyy'); }
+      saved++;
+    });
+    return { ok: true, saved: saved };
+  } finally { lock.releaseLock(); }
+}
+
+function importUiRun(write) { return { ok: true, text: importRun_(!!write) }; }
+
+function importUiPhoto(name) {
+  const it = child_(driveRoot_(), PAPER_FOLDER).getFilesByName(String(name || ''));
+  if (!it.hasNext()) return null;
+  const b = it.next().getBlob();
+  return 'data:' + (b.getContentType() || 'image/jpeg') + ';base64,' + Utilities.base64Encode(b.getBytes());
 }
