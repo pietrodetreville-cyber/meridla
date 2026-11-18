@@ -201,10 +201,15 @@ function paperTranscribe_(b64) {
   const det = [];
   for (let attempt = 0; attempt < 3; attempt++) {
     let res = UrlFetchApp.fetchAll(mkReqs());
-    if (!noThink && res.every(r => r.getResponseCode() === 400)) { noThink = true; res = UrlFetchApp.fetchAll(mkReqs()); }
+    // model, který nastavení přemýšlení nepřijme (400), se zkusí ještě bez něj
+    const bad400 = []; res.forEach((r, i) => { if (r.getResponseCode() === 400 && !noThink) bad400.push(i); });
+    if (bad400.length) {
+      const again = UrlFetchApp.fetchAll(bad400.map(i => ({ url: 'https://generativelanguage.googleapis.com/v1beta/models/' + models[i] + ':generateContent', method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: pay(models[i], false), muteHttpExceptions: true })));
+      bad400.forEach((i, k) => { res[i] = again[k]; });
+    }
     for (let i = 0; i < res.length; i++) {
       const r = res[i], code = r.getResponseCode();
-      if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code)); continue; }
+      if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code + ' ' + r.getContentText().replace(/s+/g, ' ').slice(0, 100))); continue; }
       try {
         const j = JSON.parse(r.getContentText());
         if (!j.candidates || !j.candidates[0]) { det.push(models[i] + ': bez odpovědi' + (j.promptFeedback && j.promptFeedback.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : '')); continue; }
