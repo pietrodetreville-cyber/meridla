@@ -237,8 +237,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <section id="hist" class="hide">
   <div class="card">
     <strong id="hname"></strong>
-    <div class="seg" id="hrange"><button data-r="week" type="button">Týden</button><button data-r="month" type="button">Měsíc</button><button data-r="year" type="button">Rok</button><button data-r="all" class="on" type="button">Vše</button></div>
-    <div class="pnav"><button class="sec" id="pprev" type="button" aria-label="Předchozí období">◀</button><div id="ptitle"></div><button class="sec" id="pnext" type="button" aria-label="Další období">▶</button></div>
+    <div id="ptitle" style="text-align:center;font-weight:600;margin:6px 0 2px"></div>
     <div class="note" id="pnote"></div>
     <div id="hbody"></div>
   </div>
@@ -283,7 +282,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.26.0';
+const VERSION = '1.27.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -708,9 +707,6 @@ function autoOffset() {
     hist.note = 'Za aktuální období nejsou žádné odečty, zobrazuji poslední období s daty.';
   }
 }
-$('hrange').addEventListener('click', e => { const r = e.target.dataset.r; if (!r) return; hist.range = r; if (hist.readings) { autoOffset(); renderHist(); } });
-$('pprev').onclick = () => { hist.offset--; hist.note = ''; renderHist(); };
-$('pnext').onclick = () => { if (hist.offset < 0) { hist.offset++; hist.note = ''; renderHist(); } };
 async function loadHist() {
   const body = $('hbody');
   if (hist.id !== current.id || !hist.readings) {
@@ -728,10 +724,9 @@ const fmtD = x => fmtNum(Math.round(x * 100) / 100);
 // doba mezi dvěma odečty srozumitelně (minuty, hodiny, dny a hodiny)
 const fmtDur = ms => { const hh = ms / 36e5; if (hh < 1) return Math.max(1, Math.round(ms / 6e4)) + ' min'; if (hh < 48) return Math.round(hh) + ' h'; const d = Math.floor(hh / 24), r = Math.round(hh - d * 24); return d + ' d' + (r ? ' ' + r + ' h' : ''); };
 function renderHist() {
-  for (const b of document.querySelectorAll('#hrange button')) b.classList.toggle('on', b.dataset.r === hist.range);
   const rs = hist.readings, unit = current.unit || '', DAY = 864e5, now = new Date();
   const P = periodInfo(hist.range, hist.offset, rs), buckets = P.buckets, from = P.from, to = P.to, wa = from.getTime(), wb = to.getTime();
-  $('ptitle').textContent = P.title; $('pprev').disabled = P.noPrev; $('pnext').disabled = P.noNext;
+  $('ptitle').textContent = P.title;
   $('pnote').textContent = hist.note || '';
   // úseky mezi sousedními odečty: spotřeba se v nich rozloží rovnoměrně podle uplynulého času
   const pairs = [];
@@ -744,11 +739,40 @@ function renderHist() {
   const idx = [];
   let resets = 0;
   rs.forEach((x, i) => { if (x.t >= from && x.t < to) { idx.push(i); if (i && x.v < rs[i - 1].v) resets++; } });
-  const W = 340, H = 150, L = 4, T = 16, B = 20, max = Math.max(...buckets.map(q => q.sum), 0.0001), bw = (W - 2 * L) / buckets.length;
-  const bars = buckets.map((bk, i) => { const bh = bk.sum / max * (H - T - B), x = L + i * bw;
-    return '<rect x="' + (x + bw * 0.15).toFixed(1) + '" y="' + (H - B - bh).toFixed(1) + '" width="' + (bw * 0.7).toFixed(1) + '" height="' + Math.max(bh, bk.sum > 0 ? 1.5 : 0).toFixed(1) + '" rx="2" fill="var(--acc)"/>' +
-      (buckets.length <= 12 && bk.sum > 0 ? '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - B - bh - 3).toFixed(1) + '" text-anchor="middle">' + fmtD(bk.sum) + '</text>' : '') +
-      '<text x="' + (x + bw / 2).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="middle">' + bk.label + '</text>'; }).join('');
+  // spojnicový graf: bod = průměrná denní spotřeba mezi dvěma sousedními odečty (ve středu úseku), čára je vyhlazená
+  const pts = pairs.filter(p => p.t1 - p.t0 >= 36e5).map(p => ({ t: (p.t0 + p.t1) / 2, y: p.inc / ((p.t1 - p.t0) / DAY) }));
+  const W = 340, H = 170, L = 34, R = 10, T = 14, B = 22;
+  let chart = '';
+  if (pts.length) {
+    const x0 = pairs.length ? pairs[0].t0 : pts[0].t, x1 = pairs.length ? pairs[pairs.length - 1].t1 : pts[0].t, span = Math.max(x1 - x0, 1);
+    const ymax = Math.max(...pts.map(q => q.y), 0.0001) * 1.18;
+    const X = t => L + (t - x0) / span * (W - L - R), Y = v => H - B - v / ymax * (H - T - B);
+    // stoupání křivky v bodech (monotónní kubická interpolace, aby vlnka nepřestřelila mimo naměřené hodnoty)
+    const n = pts.length, dx = [], sl = [], m = [];
+    for (let i = 0; i < n - 1; i++) { dx[i] = pts[i + 1].t - pts[i].t; sl[i] = (pts[i + 1].y - pts[i].y) / dx[i]; }
+    for (let i = 0; i < n; i++) {
+      if (n === 1) m[i] = 0; else if (i === 0) m[i] = sl[0]; else if (i === n - 1) m[i] = sl[n - 2];
+      else m[i] = sl[i - 1] * sl[i] <= 0 ? 0 : (sl[i - 1] + sl[i]) / 2;
+    }
+    for (let i = 0; i < n - 1; i++) {
+      if (sl[i] === 0) { m[i] = 0; m[i + 1] = 0; continue; }
+      const a = m[i] / sl[i], b = m[i + 1] / sl[i], s = a * a + b * b;
+      if (s > 9) { const k = 3 / Math.sqrt(s); m[i] = k * a * sl[i]; m[i + 1] = k * b * sl[i]; }
+    }
+    let d = 'M' + X(pts[0].t).toFixed(1) + ',' + Y(pts[0].y).toFixed(1);
+    for (let i = 0; i < n - 1; i++) {
+      const h = dx[i] / 3;
+      d += ' C' + X(pts[i].t + h).toFixed(1) + ',' + Y(pts[i].y + m[i] * h).toFixed(1) + ' ' + X(pts[i + 1].t - h).toFixed(1) + ',' + Y(pts[i + 1].y - m[i + 1] * h).toFixed(1) + ' ' + X(pts[i + 1].t).toFixed(1) + ',' + Y(pts[i + 1].y).toFixed(1);
+    }
+    const area = d + ' L' + X(pts[n - 1].t).toFixed(1) + ',' + (H - B) + ' L' + X(pts[0].t).toFixed(1) + ',' + (H - B) + ' Z';
+    // vodorovné pomocné čáry a popisky osy y
+    for (let g = 0; g <= 3; g++) { const v = ymax / 1.18 * g / 3, yy = Y(v).toFixed(1); chart += '<line x1="' + L + '" x2="' + (W - R) + '" y1="' + yy + '" y2="' + yy + '" stroke="var(--line)" stroke-width="1"/><text x="' + (L - 4) + '" y="' + (Number(yy) + 3) + '" text-anchor="end">' + fmtD(v) + '</text>'; }
+    chart += '<path d="' + area + '" fill="var(--acc)" opacity=".13"/><path d="' + d + '" fill="none" stroke="var(--acc)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round"/>';
+    pts.forEach(q => { chart += '<circle cx="' + X(q.t).toFixed(1) + '" cy="' + Y(q.y).toFixed(1) + '" r="2.8" fill="var(--acc)"/>'; if (n <= 9) chart += '<text x="' + X(q.t).toFixed(1) + '" y="' + (Y(q.y) - 6).toFixed(1) + '" text-anchor="middle">' + fmtD(q.y) + '</text>'; });
+    // popisky osy x: začátek, konec a pár dat mezi nimi
+    const ticks = Math.min(4, Math.max(2, Math.floor((x1 - x0) / DAY / 7) + 1));
+    for (let k = 0; k < ticks; k++) { const t = x0 + span * k / (ticks - 1), dt = new Date(t); chart += '<text x="' + X(t).toFixed(1) + '" y="' + (H - 6) + '" text-anchor="' + (k === 0 ? 'start' : k === ticks - 1 ? 'end' : 'middle') + '">' + dt.getDate() + '. ' + (dt.getMonth() + 1) + '.</text>'; }
+  }
   // každý záznam má vlastní průměr podle času od předchozího odečtu; první záznam průměr nemá
   const rows = idx.slice().reverse().map(i => {
     const x = rs[i]; let l1, l2 = '', neg = false;
@@ -760,11 +784,10 @@ function renderHist() {
     }
     return '<div class="hrow' + (neg ? ' neg' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '</span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
   }).join('');
-  const per = P.per;
   $('hbody').innerHTML =
     '<div class="tiles"><div><b>' + fmtD(total) + ' ' + unit + '</b><span>spotřeba</span></div><div><b>' + (avgDay === null ? '–' : fmtD(avgDay) + ' ' + unit) + '</b><span>průměr za den</span></div><div><b>' + idx.length + '</b><span>odečtů</span></div></div>' +
-    '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Spotřeba za ' + per + '">' + bars + '</svg>' +
-    '<p class="note" style="margin:4px 0 0">Sloupce: spotřeba za ' + per + ', rovnoměrně rozložená mezi sousední odečty podle uplynulého času. Za dobu po posledním odečtu se nic neodhaduje.</p>' +
+    (pts.length ? '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Průměrná denní spotřeba">' + chart + '</svg>' : '<p class="note">Na graf jsou potřeba aspoň dva odečty.</p>') +
+    '<p class="note" style="margin:4px 0 0">Čára ukazuje průměrnou denní spotřebu (' + unit + ' za den). Každý bod je průměr mezi dvěma sousedními odečty, čára je vyhlazená. Za dobu po posledním odečtu se nic neodhaduje.</p>' +
     (resets ? '<p class="note warn">V období je ' + resets + ' odečet s nižším stavem než předtím. Do spotřeby se nezapočítal.</p>' : '') +
     (idx.length ? '<div style="margin-top:6px">' + rows + '</div>' : '<p class="note">V tomto období není žádný odečet.</p>');
 }
