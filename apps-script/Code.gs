@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.28.1';
+const SCRIPT_VERSION = '1.28.2';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -333,7 +333,7 @@ function badModel_(name) {
 }
 
 // hlavní a záložní modely (další se zkusí, jen když předchozí selže)
-const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-4-argon'];
+const GEMINI_MODELS = ['gemini-3.8-flash', 'gemini-3.5-flash-lite', 'gemini-3.6-flash', 'gemini-3.7-flash'];
 function geminiModels_() { return GEMINI_MODELS.slice(); }
 
 function readWithAi_(meter, b64) {

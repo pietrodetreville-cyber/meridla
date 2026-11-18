@@ -203,16 +203,18 @@ function paperTranscribe_(b64) {
   const schema = { type: 'ARRAY', items: { type: 'OBJECT', properties: { datum: { type: 'STRING', nullable: true }, budova: { type: 'STRING' }, druh: { type: 'STRING' }, cislo: { type: 'STRING' }, stav: { type: 'NUMBER' } }, required: ['budova', 'druh', 'stav'] } };
   // bez „přemýšlení“ modelu je čtení rychlejší (2.5: rozpočet 0, řada 3: úroveň minimal); když model nastavení odmítne (400), jde se bez něj
   const think = m => /gemini-2.5/.test(m) ? { thinkingBudget: 0 } : /gemini-3/.test(m) ? { thinkingLevel: 'minimal' } : null;
-  const pay = (m, withThink) => JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: Object.assign({ responseMimeType: 'application/json', responseSchema: schema, temperature: 0, maxOutputTokens: 8192 }, withThink && think(m) ? { thinkingConfig: think(m) } : {}) });
+  const pay = (m, withThink) => JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: Object.assign({ responseMimeType: 'application/json', responseSchema: schema, temperature: 0.1, maxOutputTokens: 8192 }, withThink && think(m) ? { thinkingConfig: think(m) } : {}) });
   const call = (m, withThink) => UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: pay(m, withThink), muteHttpExceptions: true });
   const det = [];
   // hlavní model, při selhání záložní; vždy jen jeden požadavek najednou (záložní se nevolá zbytečně)
   for (const m of GEMINI_MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
+      const main = m === GEMINI_MODELS[0];
       let r = call(m, true);
       if (r.getResponseCode() === 400 && think(m)) r = call(m, false);
       const code = r.getResponseCode();
-      if (code === 503 && attempt === 0) { Utilities.sleep(3000); continue; }
+      // 503: hlavní model se po 2 s zkusí ještě jednou, u záložních se po 2 s přejde na další; 429 a 404: hned další model
+      if (code === 503) { Utilities.sleep(2000); if (main && attempt === 0) continue; }
       if (code !== 200) { det.push(m + ': ' + (code === 429 ? 'kvóta AI vyčerpána (' + quotaWhy_(r.getContentText()) + ')' : code === 404 ? 'model není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code + ' ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 100))); break; }
       try {
         const j = JSON.parse(r.getContentText());
