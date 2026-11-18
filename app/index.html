@@ -57,6 +57,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 .pnav button:disabled{opacity:.3;cursor:default}
 #ptitle{flex:1;text-align:center;font-weight:700;line-height:1.2}
 #pnote{margin:0 0 6px}
+#meter .row button{padding:9px 12px;font-size:.95rem;border-radius:10px}
 .sep{border:0;border-top:1px solid var(--line);margin:14px 0 10px}
 #bflog{margin-top:8px;line-height:1.5}
 .linkbtn{display:block;margin:12px auto 0;background:transparent;color:var(--mut);padding:8px 12px;font-weight:500;font-size:.85rem}
@@ -203,7 +204,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
   <p class="note" id="homenote"></p>
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
   <div id="hadminpanel" class="card hide">
-    <div class="row" style="align-items:center"><b style="flex:1">Admin · papírový záznam</b><button class="sec" id="aclose" type="button" style="flex:none">Zavřít admin</button></div>
+    <div class="row" style="align-items:center"><b style="flex:1">Admin</b><button class="sec" id="aclose" type="button" style="flex:none">Zavřít admin</button></div>
     <div class="note" style="margin:4px 0 8px">Vyfoť papírový arch. Fotka se jen uloží na Disk (složka Papírové záznamy). Čtení hodnot AI a zápis uděláš později v tabulce přes okno Import z papíru.</div>
     <div class="row"><button class="sec" id="acamb" type="button">📷 Vyfotit arch</button><button class="sec" id="afileb" type="button">🖼️ Z galerie</button></div>
     <input id="acam" type="file" accept="image/*" capture="environment" class="hide"><input id="afile" type="file" accept="image/*" class="hide">
@@ -211,19 +212,13 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
     <div class="note" id="astat" style="margin-top:8px"></div>
     <div class="row"><button id="aupload" class="hide" type="button">Uložit fotku</button><button class="sec hide" id="acancel" type="button">Zrušit</button></div>
     <div class="note" id="aresult"></div>
-  </div>
-</section>
-
-<section id="meter" class="hide">
-  <div class="card">
-    <div class="mhead"><span class="ico" id="micon"></span><div><strong id="mname"></strong><div class="note" id="msub"></div></div></div>
-    <div class="note" id="mlast" style="margin:10px 0"></div>
-    <div class="callout hide" id="mplace"></div>
-    <div class="row"><button id="mshot" type="button">📷 Vyfotit měřidlo</button></div>
-    <div class="row"><button class="sec" id="mhist" type="button">📊 Detail měření</button></div>
-    <div class="row"><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
-    <div id="madminpanel" class="callout hide">
-      <b>Admin · fotka místa</b>
+    <hr class="sep">
+    <b>Měřidlo</b>
+    <div class="note" style="margin:4px 0 6px">Pro fotku místa a zpětný záznam vyber měřidlo.</div>
+    <select id="amsel" style="width:100%"></select>
+    <div id="amwrap" class="hide">
+      <hr class="sep">
+      <b>Fotka místa</b>
       <div class="note" style="margin:4px 0 8px">Nová fotka nahradí stávající. Stará zůstane na Disku ve složce Místa měřidel.</div>
       <div class="row" style="margin-top:6px"><button class="sec" id="pcamb" type="button">📷 Vyfotit místo</button><button class="sec" id="pfileb" type="button">🖼️ Z galerie</button></div>
       <input id="pcam" type="file" accept="image/*" capture="environment" class="hide"><input id="pfile" type="file" accept="image/*" class="hide">
@@ -231,7 +226,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
       <div class="note" id="pstat" style="margin-top:8px"></div>
       <div class="row"><button id="pupload" class="hide" type="button">Nahrát</button><button class="sec hide" id="pcancel" type="button">Zrušit</button></div>
       <hr class="sep">
-      <b>Admin · zpětný záznam z papíru</b>
+      <b>Zpětný záznam z papíru</b>
       <div class="note" style="margin:4px 0 6px">Doplní odečet <b>bez fotky</b> k vybranému datu, třeba ze starých papírových záznamů. Dá se zapsat víc záznamů po sobě.</div>
       <div class="row" style="margin-top:6px"><div><label for="bfdate">Datum</label><input id="bfdate" type="date"></div><div><label for="bftime">Čas</label><input id="bftime" type="time" value="12:00"></div></div>
       <label for="bfval" id="bflabel">Stav měřidla</label><input id="bfval" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 12345,6">
@@ -240,18 +235,25 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
       <div class="row"><button id="bfsave" type="button">Zapsat záznam</button></div>
       <div class="note" id="bflog"></div>
     </div>
-    <button class="linkbtn" id="madmin" type="button">🔒 Admin</button>
+  </div>
+</section>
+
+<section id="meter" class="hide">
+  <div class="card">
+    <div class="mhead"><span class="ico" id="micon"></span><div><strong id="mname"></strong><div class="note" id="msub"></div></div></div>
+    <div class="note" id="mlast" style="margin:10px 0"></div>
+    <div class="callout hide" id="mplace"></div>
+    <div class="row"><button id="mshot" type="button">📷 Vyfotit měřidlo</button><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
   </div>
 </section>
 
 <section id="hist" class="hide">
   <div class="card">
-    <strong id="hname"></strong>
+    <strong>📊 Detail měření</strong>
     <div id="ptitle" style="text-align:center;font-weight:600;margin:6px 0 2px"></div>
     <div class="note" id="pnote"></div>
     <div id="hbody"></div>
   </div>
-  <button class="sec" id="hback" type="button" style="width:100%">Zpět na měřidlo</button>
 </section>
 
 <section id="detail" class="hide">
@@ -292,7 +294,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.28.0';
+const VERSION = '1.29.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -496,17 +498,12 @@ $('lb').onclick = () => $('lb').classList.add('hide');
 $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(current); };
 
 // ================= správce: nahrání fotky místa (PIN) =================
-let adminPin = null, adminUntil = 0, pendingPlace = '', pinFor = 'meter', pendingArch = '';
+let adminPin = null, adminUntil = 0, pendingPlace = '', pendingArch = '', am = null;
 const adminOn = () => adminPin && Date.now() < adminUntil;
-function adminLock() { document.body.classList.remove('adminmode'); $('hadmin').textContent = '🔒'; adminPin = null; adminUntil = 0; pendingPlace = ''; pendingArch = ''; $('hadminpanel').classList.add('hide'); $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; $('aresult').textContent = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('madminpanel').classList.add('hide'); $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
+function adminLock() { document.body.classList.remove('adminmode'); $('hadmin').textContent = '🔒'; adminPin = null; adminUntil = 0; pendingPlace = ''; pendingArch = ''; $('hadminpanel').classList.add('hide'); $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; $('aresult').textContent = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; am = null; $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
 function adminError(code) {
   return code === 'pin' ? 'Špatný PIN.' : code === 'locked' ? 'Příliš mnoho pokusů. Zkus to za 10 minut.' : code === 'nopin' ? 'PIN správce není ve skriptu nastaven (vlastnost ADMIN_PIN).' : code === 'drive' ? 'Fotku se nepodařilo uložit na Disk.' : code === 'nofolder' ? 'Chybí složka na fotky míst (spusť setup).' : 'Nahrání se nepovedlo. Zkus to prosím znovu.';
 }
-$('madmin').onclick = () => {
-  pinFor = 'meter';
-  if (adminOn()) { $('madminpanel').classList.toggle('hide'); bfInit(); return; }
-  $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
-};
 $('pincancel').onclick = () => $('pinov').classList.add('hide');
 $('pingo').onclick = async () => {
   const pin = $('pininput').value.trim(); if (!pin) return;
@@ -515,17 +512,25 @@ $('pingo').onclick = async () => {
     const r = await post({ token: token(), action: 'adminCheck', pin });
     if (!r.ok) { $('pinmsg').textContent = adminError(r.error); return; }
     adminPin = pin; adminUntil = Date.now() + 10 * 60 * 1000;
-    $('pinov').classList.add('hide'); if (pinFor === 'home') enterAdmin(); else { $('madminpanel').classList.remove('hide'); bfInit(); }
+    $('pinov').classList.add('hide'); enterAdmin();
   } catch (e) { $('pinmsg').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('pingo').disabled = false; }
 };
 $('pininput').addEventListener('keydown', e => { if (e.key === 'Enter') $('pingo').click(); });
 // ---- foto papírového archu: uložení na Disk + AI přepis do listu Import z papíru ----
 // admin režim: místo měřidel se ukážou jen servisní boxy; ikona v záhlaví ho zapíná a vypíná
-function enterAdmin() { show('home'); document.body.classList.add('adminmode'); $('hadmin').textContent = '🔓'; $('hadminpanel').classList.remove('hide'); window.scrollTo(0, 0); }
+// měřidlo, ke kterému se v adminu nahrává fotka místa nebo zpětný záznam
+function amPick() { am = meters.find(m => m.id === $('amsel').value) || null; $('amwrap').classList.toggle('hide', !am); if (am) bfInit(); }
+function fillAdminMeters() {
+  const s = $('amsel'), keep = s.value; s.textContent = '';
+  const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '— vyber měřidlo —'; s.appendChild(o0);
+  meters.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name + (m.building ? ' · ' + m.building : '') + ' (' + idLabel(m) + ')'; s.appendChild(o); });
+  s.value = keep; amPick();
+}
+$('amsel').onchange = amPick;
+function enterAdmin() { fillAdminMeters(); show('home'); document.body.classList.add('adminmode'); $('hadmin').textContent = '🔓'; $('hadminpanel').classList.remove('hide'); window.scrollTo(0, 0); }
 $('aclose').onclick = () => adminLock();
 $('hadmin').onclick = () => {
-  pinFor = 'home';
   if (adminOn()) { if (document.body.classList.contains('adminmode')) adminLock(); else enterAdmin(); return; }
   $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
 };
@@ -567,15 +572,15 @@ $('aupload').onclick = async () => {
 function bfInit() {
   const d = new Date(), p = n => String(n).padStart(2, '0');
   $('bfdate').max = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
-  $('bflabel').textContent = 'Stav měřidla · ' + (current ? decText(decOf(current)) : '');
+  $('bflabel').textContent = 'Stav měřidla · ' + (current ? decText(decOf(am)) : '');
 }
 let bfLog = [];
 async function bfSend(force) {
   const date = $('bfdate').value, time = $('bftime').value || '12:00';
-  const value = roundTo(parseNum($('bfval').value), decOf(current));
+  const value = roundTo(parseNum($('bfval').value), decOf(am));
   $('bfsave').disabled = true; $('bfstat').innerHTML = '<span class="spin sm"></span>Zapisuji…';
   try {
-    const r = await post({ token: token(), action: 'backfill', id: current.id, pin: adminPin, when: date + 'T' + time, value, note: $('bfnote').value.trim(), force: !!force });
+    const r = await post({ token: token(), action: 'backfill', id: am.id, pin: adminPin, when: date + 'T' + time, value, note: $('bfnote').value.trim(), force: !!force });
     if (!r.ok) {
       if (r.error === 'dup') { $('bfstat').textContent = ''; if (confirm('Pro toto datum už existuje záznam se stejným stavem. Zapsat i tak?')) return bfSend(true); return; }
       if (r.error === 'pin' || r.error === 'locked') { adminLock(); $('bfstat').textContent = ''; return toast(adminError(r.error)); }
@@ -584,15 +589,16 @@ async function bfSend(force) {
     }
     adminUntil = Date.now() + 10 * 60 * 1000;
     const dd = new Date(date + 'T' + time);
-    bfLog.unshift('✓ ' + dd.getDate() + '. ' + (dd.getMonth() + 1) + '. ' + dd.getFullYear() + ' · ' + fmtNum(value) + ' ' + (current.unit || '') + (r.warn ? ' (nižší než předchozí)' : ''));
+    bfLog.unshift('✓ ' + dd.getDate() + '. ' + (dd.getMonth() + 1) + '. ' + dd.getFullYear() + ' · ' + fmtNum(value) + ' ' + (am.unit || '') + (r.warn ? ' (nižší než předchozí)' : ''));
     $('bflog').innerHTML = 'Zapsáno v tomto okně:<br>' + bfLog.slice(0, 8).join('<br>');
     $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('bfval').focus();
     toast(r.warn ? 'Zapsáno. Pozor: stav je nižší než předchozí záznam v tom čase.' : 'Záznam zapsán ✓', 3500);
-    const id = current.id; await loadList(); current = meters.find(m => m.id === id) || current; openMeter(current);
+    const id = am.id; await loadList(); fillAdminMeters(); $('amsel').value = id; amPick();
   } catch (e) { $('bfstat').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('bfsave').disabled = false; }
 }
 $('bfsave').onclick = () => {
+  if (!am) return toast('Nejdřív vyber měřidlo.');
   if (!adminOn()) { adminLock(); return toast('Admin se po čase zamkl. Zadej PIN znovu.'); }
   if (!$('bfdate').value) return ($('bfstat').textContent = 'Vyber datum.');
   if ($('bfval').value.trim() === '' || !isFinite(parseNum($('bfval').value))) return ($('bfstat').textContent = 'Zadej stav měřidla.');
@@ -618,20 +624,21 @@ $('pfile').onchange = e => { pickPlace(e.target.files[0]); e.target.value = ''; 
 $('pcancel').onclick = () => { pendingPlace = ''; $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; };
 $('pupload').onclick = async () => {
   if (!adminOn()) { adminLock(); return toast('Admin se po čase zamkl. Zadej PIN znovu.'); }
-  if (!pendingPlace) return;
+  if (!pendingPlace || !am) return;
   $('pupload').disabled = true; $('pstat').innerHTML = '<span class="spin sm"></span>Nahrávám…';
   try {
-    const r = await post({ token: token(), action: 'placeUpload', id: current.id, pin: adminPin, photo: pendingPlace });
+    const r = await post({ token: token(), action: 'placeUpload', id: am.id, pin: adminPin, photo: pendingPlace });
     if (!r.ok) { if (r.error === 'pin' || r.error === 'locked') adminLock(); $('pstat').textContent = adminError(r.error); return; }
-    current.placePhoto = r.name; lsSet('meridla.meters', JSON.stringify(meters));
-    toast('Fotka místa nahrána ✓', 3500); adminLock(); openMeter(current);
+    am.placePhoto = r.name; lsSet('meridla.meters', JSON.stringify(meters));
+    pendingPlace = ''; $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = '';
+    toast('Fotka místa nahrána ✓', 3500);
   } catch (e) { $('pstat').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('pupload').disabled = false; }
 };
 
 // ================= obrazovky =================
 function show(name) {
-  ['home', 'meter', 'hist', 'detail'].forEach(n => $(n).classList.toggle('hide', n !== name));
+  ['home', 'meter', 'hist', 'detail'].forEach(n => $(n).classList.toggle('hide', !(n === name || (name === 'meter' && n === 'hist'))));
   $('hero').style.display = name === 'home' ? '' : 'none'; $('sbar').style.display = name === 'home' ? '' : 'none'; hideSugg();
   window.scrollTo(0, 0);
 }
@@ -651,11 +658,10 @@ function openMeter(m) {
   if (m.placePhoto) { pl.setAttribute('role', 'button'); pl.setAttribute('tabindex', '0'); pl.setAttribute('aria-label', 'Zobrazit fotku místa: ' + (m.placeHelp || m.name)); }
   else { pl.removeAttribute('role'); pl.removeAttribute('tabindex'); pl.removeAttribute('aria-label'); }
   show('meter');
+  hist.readings = null; loadHist().catch(() => {});
 }
 $('mshot').onclick = () => openCamera();
 $('mback').onclick = () => { adminLock(); show('home'); };
-$('hback').onclick = () => show('meter');
-$('mhist').onclick = async () => { $('hname').textContent = current.name + (current.building ? ' · ' + current.building : ''); show('hist'); await loadHist(); };
 
 // ================= detail měření: týden / měsíc / rok =================
 let hist = { id: null, readings: null, range: 'all', offset: 0, note: '' };
