@@ -113,6 +113,8 @@ img.shot{width:100%;border-radius:10px;display:block}
 .hrow{display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-top:1px solid var(--line);font-size:.9rem}
 .hrow b{white-space:nowrap}
 .hrow .inc{color:var(--mut);font-size:.8rem}
+.hrow .src{font-size:.78rem;color:var(--mut)}
+.hrow .src a{color:var(--acc);text-decoration:none}
 .hrow.neg .inc{color:var(--warn)}
 #splash{position:fixed;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:radial-gradient(700px 480px at 50% 35%,var(--glow1),transparent 65%),var(--bg);transition:opacity .6s ease,visibility .6s}
 #splash.out{opacity:0;visibility:hidden}
@@ -294,7 +296,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.29.0';
+const VERSION = '1.30.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -730,7 +732,7 @@ async function loadHist() {
     try {
       const r = await api('?token=' + encodeURIComponent(token()) + '&action=history&id=' + encodeURIComponent(current.id));
       if (!r.ok) throw new Error(r.error || 'chyba');
-      hist = { id: current.id, range: hist.range, offset: 0, note: '', readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who })) };
+      hist = { id: current.id, range: hist.range, offset: 0, note: '', readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', photo: x.photo || '' })) };
       autoOffset();
     } catch (e) { body.innerHTML = '<p class="note warn">Detail se nepodařilo načíst' + (e instanceof TypeError ? ' (bez připojení)' : '') + '.</p>'; return; }
   }
@@ -809,7 +811,10 @@ function renderHist() {
       if (d < 0) { neg = true; l1 = 'nižší než minule'; }
       else { l1 = '+' + fmtD(d) + ' za ' + fmtDur(ms); l2 = ms >= 36e5 ? 'Ø ' + fmtD(d / (ms / DAY)) + ' ' + unit + ' / den' : 'Ø nelze určit (příliš krátký úsek)'; }
     }
-    return '<div class="hrow' + (neg ? ' neg' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '</span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
+    // zdroj záznamu: z archu (papír), z fotky měřidla, přečtené AI, nebo jen ručně; u fotky je odkaz na ni
+    const sr = /papír/.test(x.src) ? (x.photo ? '📄 z archu' : '📄 z papíru') : /AI/.test(x.src) ? (x.photo ? '📷 z fotky, četla AI' : '🤖 přečetla AI') : x.photo ? '📷 z fotky' : (x.src && x.src !== 'ručně' ? x.src : '✍️ zadáno ručně');
+    const srh = x.photo ? '<a href="' + x.photo.replace(/"/g, '') + '" target="_blank" rel="noopener">' + sr.replace(/</g, '&lt;') + '</a>' : sr.replace(/</g, '&lt;');
+    return '<div class="hrow' + (neg ? ' neg' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '<br><span class="src">' + srh + '</span></span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
   }).join('');
   $('hbody').innerHTML =
     '<div class="tiles"><div><b>' + fmtD(total) + ' ' + unit + '</b><span>spotřeba</span></div><div><b>' + (avgDay === null ? '–' : fmtD(avgDay) + ' ' + unit) + '</b><span>průměr za den</span></div><div><b>' + idx.length + '</b><span>odečtů</span></div></div>' +

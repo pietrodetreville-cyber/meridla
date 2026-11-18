@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.28.2';
+const SCRIPT_VERSION = '1.29.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -259,7 +259,7 @@ function readings_() {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
   return v.slice(1).map((r, i) => ({ r: r, row: i + 2 })).filter(o => o.r[0]).map(o => {
     const r = o.r, has = r[3] !== '' && r[3] !== null && isFinite(Number(r[3]));
-    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row };
+    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row, src: String(r[8] || ''), photo: String(r[7] || '') };
   });
 }
 
@@ -292,7 +292,7 @@ function doGet(e) {
   if (!who) return ok_({ ok: false, error: 'token' });
   if (e.parameter.action === 'history') {
     const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
-    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who })) });
+    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, photo: /^https:\/\/(drive|docs)\.google\.com\//.test(x.photo) ? x.photo : '' })) });
   }
   if (e.parameter.action === 'place') {
     const mm = meters_().find(x => x.id === e.parameter.id);
