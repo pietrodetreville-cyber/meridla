@@ -38,12 +38,12 @@
 <body>
 <div class="wrap">
   <div class="pane">
-    <div class="ph"><b>1. Fotka archu</b><button class="sec" id="up" type="button" title="Nahraje fotku z počítače do složky Papírové záznamy na Disku">📷 Nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"></div>
-    <div class="ph"><select id="arch" style="flex:1"></select><button id="reread" type="button" title="Pošle vybranou fotku do AI a přepíše z ní hodnoty do tabulky">🔄 Přečíst AI</button></div>
-    <div id="img"><div class="muted" style="padding:20px">Nahraj fotku archu, nebo vyber některou ze složky Papírové záznamy.</div></div>
+    <div class="ph"><b>1. Arch z Google Disku</b><span class="muted">složka Papírové záznamy</span></div>
+    <div class="ph"><select id="arch" style="flex:1"></select><button id="reread" type="button" title="Pošle vybranou fotku do AI a přepíše z ní hodnoty do tabulky">2. Načíst AI</button><button class="sec" id="reload" type="button" title="Znovu načte seznam fotek z Disku">↻</button></div>
+    <div id="img"><div class="muted" style="padding:20px">Vyber arch ze seznamu. Fotky se do složky ukládají z aplikace (🔒 Správce).</div></div>
   </div>
   <div class="pane">
-    <div class="ph"><b id="ttl">2. Hodnoty vybraného archu</b>
+    <div class="ph"><b id="ttl">Načtené řádky vybraného archu</b>
       <button class="sec" id="droparch" type="button" title="Označí nezapsané řádky vybraného archu jako vyřazené (nic se nemaže)">Vyřadit řádky archu</button>
       <button class="sec" id="dropold" type="button" style="display:none" title="Označí nezapsané řádky ostatních archů jako vyřazené (nic se nemaže)">Uklidit staré</button>
       <button class="sec" id="add" type="button">+ Řádek</button>
@@ -51,9 +51,8 @@
     <div id="tw"><table><thead><tr><th style="width:34px" title="Zahrnout do zápisu">✓</th><th style="width:100px">Datum</th><th style="width:90px">Budova</th><th style="width:100px">Druh</th><th style="min-width:210px">Měřidlo</th><th style="width:100px">Stav</th><th style="width:190px">Výsledek</th></tr></thead><tbody id="rows"></tbody></table></div>
     <div class="foot">
       <span class="msg" id="msg">Načítám…</span>
-      <button class="sec" id="save" type="button">Uložit</button>
-      <button class="sec" id="check" type="button">Zkontrolovat</button>
-      <button id="write" type="button">3. Zapsat do měření</button>
+      <button class="sec" id="save" type="button" title="Uloží řádky do listu Import z papíru a zkontroluje je">Uložit do Importu z papíru</button>
+      <button id="write" type="button">3. Zapsat do Odečtů</button>
     </div>
   </div>
 </div>
@@ -63,7 +62,7 @@ const $ = id => document.getElementById(id);
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const closed = s => /^(ZAPSÁNO|VYŘAZENO)/.test(String(s || ''));
 function setMsg(t, bad) { const m = $('msg'); m.textContent = t; m.style.color = bad ? '#991b1b' : '#374151'; }
-function lock(on) { busy = on; ['save', 'check', 'write', 'add', 'up', 'reread', 'droparch', 'dropold', 'arch'].forEach(i => $(i).disabled = on); }
+function lock(on) { busy = on; ['save', 'write', 'add', 'reread', 'reload', 'droparch', 'dropold', 'arch'].forEach(i => $(i).disabled = on); }
 const errText = e => (e && e.message) || String(e) || 'server nevrátil text chyby (možná vypršel čas, zkus menší fotku)';
 
 function opt(sel, value, label) { const o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; sel.appendChild(o); return o; }
@@ -123,7 +122,7 @@ function render() {
   });
   if (!list.length) {
     const tr = document.createElement('tr'), c = document.createElement('td'); c.colSpan = 7; c.className = 'muted'; c.style.padding = '16px';
-    c.textContent = cur() ? 'K tomuto archu zatím nejsou žádné hodnoty. Zvol Přečíst AI, nebo přidej řádek ručně.' : 'Nejdřív nahraj nebo vyber fotku archu.';
+    c.textContent = cur() ? 'K tomuto archu zatím nejsou žádné hodnoty. Zvol Načíst AI, nebo přidej řádek ručně.' : 'Nejdřív vyber arch ze seznamu.';
     tr.appendChild(c); tb.appendChild(tr);
   }
   const n = strays().length, b = $('dropold');
@@ -139,7 +138,7 @@ function archList() {
 function fillArches(want) {
   const s = $('arch'), prev = want || s.value; s.textContent = '';
   const list = archList();
-  if (!list.length) { opt(s, '', '— žádná fotka —'); s.value = ''; return showPhoto(); }
+  if (!list.length) { opt(s, '', '— složka je prázdná —'); s.value = ''; return showPhoto(); }
   list.forEach(a => {
     const n = rows.filter(r => r.foto === a && !/^VYŘAZENO/.test(r.status || '')).length;
     opt(s, a, a + (n ? '  ·  ' + n + ' řádků' : '  ·  nepřečteno'));
@@ -150,7 +149,7 @@ function fillArches(want) {
 }
 function showPhoto() {
   const n = cur(), box = $('img');
-  if (!n) { box.innerHTML = '<div class="muted" style="padding:20px">Nahraj fotku archu, nebo vyber některou ze složky Papírové záznamy.</div>'; return; }
+  if (!n) { box.innerHTML = '<div class="muted" style="padding:20px">Vyber arch ze seznamu. Fotky se do složky ukládají z aplikace (🔒 Správce).</div>'; return; }
   box.innerHTML = '<div class="muted" style="padding:20px">Načítám fotku…</div>';
   google.script.run.withSuccessHandler(u => {
     if (cur() !== n) return;
@@ -167,7 +166,7 @@ function load(keepMsg) {
     google.script.run.withSuccessHandler(r => { files = (r && r.files) || []; done(); }).withFailureHandler(() => { files = []; done(); }).importUiFiles();
     function done() {
       fillArches(window.__newArch); window.__newArch = ''; render(); lock(false);
-      if (!keepMsg) setMsg(cur() ? 'Zkontroluj hodnoty podle fotky, oprav je a zvol Zkontrolovat.' : 'Nahraj fotku archu.');
+      if (!keepMsg) setMsg(cur() ? 'Zkontroluj hodnoty podle fotky, oprav je a zvol Uložit do Importu z papíru.' : 'Vyber arch ze seznamu.');
     }
   }).withFailureHandler(e => { lock(false); setMsg('Chyba načtení: ' + errText(e), true); }).importUiData();
 }
@@ -179,10 +178,9 @@ function saveThen(next) {
   lock(true); setMsg('Ukládám…');
   google.script.run.withSuccessHandler(() => next()).withFailureHandler(e => { lock(false); setMsg('Uložení se nepovedlo: ' + errText(e), true); }).importUiSave(payload());
 }
-$('save').onclick = () => saveThen(() => { setMsg('Uloženo.'); load(true); setTimeout(() => setMsg('Uloženo.'), 400); });
-$('check').onclick = () => saveThen(() => {
+$('save').onclick = () => saveThen(() => {
   setMsg('Kontroluji…');
-  google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg(r.text || 'Zkontrolováno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Kontrola selhala: ' + errText(e), true); }).importUiRun(false);
+  google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg((r && r.text) || 'Uloženo a zkontrolováno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Kontrola selhala: ' + errText(e), true); }).importUiRun(false);
 });
 $('write').onclick = () => {
   const s = strays().length;
@@ -214,21 +212,6 @@ $('droparch').onclick = () => { const a = cur(); if (!a) return setMsg('Nejdří
 $('dropold').onclick = () => dropRows(r => r.foto !== cur(), 'z ostatních archů');
 $('arch').onchange = () => { render(); showPhoto(); };
 
-// nahrání fotky z počítače: zmenší se na 2000 px a uloží na Disk; objeví se v seznamu, čte se až tlačítkem Přečíst AI
-function resizeFile(file) {
-  return createImageBitmap(file).then(bmp => { const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.9).split(',')[1]; });
-}
-function uploadArch(file) {
-  if (!file || busy) return;
-  lock(true); setMsg('Zmenšuji a ukládám fotku na Disk…');
-  resizeFile(file).then(b64 => {
-    google.script.run.withSuccessHandler(r => {
-      if (!r || !r.ok) { lock(false); return setMsg('Nahrání se nepovedlo' + (r && r.error ? ' (' + r.error + ')' : '') + '.', true); }
-      window.__newArch = r.name; load(true);
-      setTimeout(() => setMsg('Fotka je uložená a vybraná v seznamu. Zvol Přečíst AI.'), 700);
-    }).withFailureHandler(e => { lock(false); setMsg('Nahrání selhalo: ' + errText(e), true); }).importUiUpload(b64);
-  }).catch(() => { lock(false); setMsg('Fotku se nepodařilo zpracovat.', true); });
-}
 function aiDone(r) {
   if (!r || !r.ok) { lock(false); return setMsg(r && r.error === 'nofile' ? 'Fotka ve složce Papírové záznamy nenalezena.' : r && r.error === 'toobig' ? 'Fotka je větší než 15 MB, zmenši ji.' : 'Čtení se nepovedlo' + (r && r.detail ? ': ' + r.detail : '.'), true); }
   window.__newArch = r.name; load(true);
@@ -241,10 +224,7 @@ $('reread').onclick = () => {
   lock(true); setMsg('AI čte fotku (až minutu)…');
   google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + errText(e), true); }).importUiReread(n);
 };
-$('up').onclick = () => $('upf').click();
-$('upf').onchange = e => { uploadArch(e.target.files[0]); e.target.value = ''; };
-document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.indexOf('image/') === 0) uploadArch(f); });
+$('reload').onclick = () => { if (!busy) { setMsg('Načítám seznam z Disku…'); load(true); setTimeout(() => setMsg('Seznam obnoven.'), 700); } };
 load();
 </script>
 </body>
