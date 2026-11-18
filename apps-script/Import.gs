@@ -191,13 +191,17 @@ function paperTranscribe_(b64) {
   const prompt = 'Na fotce je papírový arch (tabulka) s ručně psanými odečty měřidel v bytovém domě. Přečti z něj všechny řádky s hodnotou, ať má arch jakékoli rozložení sloupců. Typické rozložení: Č.P. (číslo popisné domu 271 až 275; řádky se značkou /2, /4, /6, /8, /10 patří k domu uvedenému těsně nad nimi), plynoměr a vodoměr v m3, číslo elektroměru, stav elektroměru v kWh a datum. Ručně napsané datum se může táhnout přes víc řádků a platí pro všechny řádky vedle něj. Řádky kolem nápisu KOTELNA: elektroměry patří k domu 271, plynoměry, vodoměr a TUV (teplá užitková voda) patří kotelně. ' +
     (known ? 'Známá měřidla (budova, druh, id): ' + known + '. ' : '') +
     'Vrať JSON pole, jeden objekt pro každou přečtenou hodnotu: {"datum":"YYYY-MM-DD" nebo null,"budova":"271".."275" nebo "Kotelna","druh":"Vodoměr" nebo "Plynoměr" nebo "Elektroměr" nebo "TUV","cislo":"číslo elektroměru bez mezer, např. W060073, jinak prázdný řetězec","stav":číslo s desetinnou tečkou}. Hodnoty nevymýšlej, nečitelné vynech.';
-  const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 8192 } });
-  const reqs = models.map(m => ({
+  // bez „přemýšlení“ modelu: čtení tabulky je mnohem rychlejší a stačí na něj
+  const think = m => /gemini-2.5/.test(m) ? { thinkingBudget: 0 } : /gemini-3/.test(m) ? { thinkingLevel: 'minimal' } : null;
+  const pay = (m, t) => JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: Object.assign({ responseMimeType: 'application/json', temperature: 0, maxOutputTokens: 8192 }, t && think(m) ? { thinkingConfig: think(m) } : {}) });
+  let noThink = false;
+  const mkReqs = () => models.map(m => ({
     url: 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', method: 'post',
-    contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true }));
+    contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: pay(m, !noThink), muteHttpExceptions: true }));
   const det = [];
   for (let attempt = 0; attempt < 3; attempt++) {
-    const res = UrlFetchApp.fetchAll(reqs);
+    let res = UrlFetchApp.fetchAll(mkReqs());
+    if (!noThink && res.every(r => r.getResponseCode() === 400)) { noThink = true; res = UrlFetchApp.fetchAll(mkReqs()); }
     for (let i = 0; i < res.length; i++) {
       const r = res[i], code = r.getResponseCode();
       if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code)); continue; }
