@@ -181,6 +181,16 @@ function parseRows_(t) {
   return Array.isArray(v) ? v : null;
 }
 
+// z odpovědi 429 vytáhne, který limit Google myslí (za minutu / za den, počet požadavků / tokenů)
+function quotaWhy_(txt) {
+  try {
+    const j = JSON.parse(txt), e = j.error || {}, out = [];
+    (e.details || []).forEach(d => (d.violations || []).forEach(v => out.push(String(v.quotaId || v.quotaMetric || '').split('/').pop())));
+    (e.details || []).forEach(d => { if (d.retryDelay) out.push('zkus za ' + d.retryDelay); });
+    return out.filter(Boolean).slice(0, 3).join(', ') || String(e.message || '').replace(/s+/g, ' ').slice(0, 90);
+  } catch (x) { return String(txt || '').replace(/s+/g, ' ').slice(0, 90); }
+}
+
 function paperTranscribe_(b64) {
   const key = props_().getProperty('GEMINI_KEY');
   if (!key) return { ok: false, error: 'nokey' };
@@ -209,7 +219,7 @@ function paperTranscribe_(b64) {
     }
     for (let i = 0; i < res.length; i++) {
       const r = res[i], code = r.getResponseCode();
-      if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code + ' ' + r.getContentText().replace(/s+/g, ' ').slice(0, 100))); continue; }
+      if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána (' + quotaWhy_(r.getContentText()) + ')' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code + ' ' + r.getContentText().replace(/s+/g, ' ').slice(0, 100))); continue; }
       try {
         const j = JSON.parse(r.getContentText());
         if (!j.candidates || !j.candidates[0]) { det.push(models[i] + ': bez odpovědi' + (j.promptFeedback && j.promptFeedback.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : '')); continue; }
@@ -227,7 +237,7 @@ function paperTranscribe_(b64) {
         det.push(models[i] + ': žádná čitelná hodnota');
       } catch (e) { det.push(models[i] + ': ' + e.message); }
     }
-    if (det.some(d => /přetížený|HTTP 5/.test(d))) Utilities.sleep(3000 * (attempt + 1)); else break;
+    if (det.some(d => /přetížený|HTTP 5/.test(d)) && !det.some(d => /kvóta/.test(d)) ) Utilities.sleep(3000 * (attempt + 1)); else break;
   }
   Logger.log('Přepis archu selhal: ' + det.join(' | '));
   return { ok: false, error: 'ai', detail: (det.some(d => /kvóta/.test(d)) ? 'Kvóta AI klíče je vyčerpaná, zkontroluj limity a fakturaci v Google AI Studiu, nebo počkej. ' : '') + det.slice(0, 4).join(' | ') };
