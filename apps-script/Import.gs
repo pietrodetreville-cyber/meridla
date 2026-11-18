@@ -187,8 +187,8 @@ function quotaWhy_(txt) {
     const j = JSON.parse(txt), e = j.error || {}, out = [];
     (e.details || []).forEach(d => (d.violations || []).forEach(v => out.push(String(v.quotaId || v.quotaMetric || '').split('/').pop())));
     (e.details || []).forEach(d => { if (d.retryDelay) out.push('zkus za ' + d.retryDelay); });
-    return out.filter(Boolean).slice(0, 3).join(', ') || String(e.message || '').replace(/s+/g, ' ').slice(0, 90);
-  } catch (x) { return String(txt || '').replace(/s+/g, ' ').slice(0, 90); }
+    return out.filter(Boolean).slice(0, 3).join(', ') || String(e.message || '').replace(/\s+/g, ' ').slice(0, 90);
+  } catch (x) { return String(txt || '').replace(/\s+/g, ' ').slice(0, 90); }
 }
 
 function paperTranscribe_(b64) {
@@ -219,7 +219,7 @@ function paperTranscribe_(b64) {
     }
     for (let i = 0; i < res.length; i++) {
       const r = res[i], code = r.getResponseCode();
-      if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána (' + quotaWhy_(r.getContentText()) + ')' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code + ' ' + r.getContentText().replace(/s+/g, ' ').slice(0, 100))); continue; }
+      if (code !== 200) { if (code === 404) badModel_(models[i]); det.push(models[i] + ': ' + (code === 429 ? 'kvóta AI vyčerpána (' + quotaWhy_(r.getContentText()) + ')' : code === 404 ? 'model už není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code + ' ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 100))); continue; }
       try {
         const j = JSON.parse(r.getContentText());
         if (!j.candidates || !j.candidates[0]) { det.push(models[i] + ': bez odpovědi' + (j.promptFeedback && j.promptFeedback.blockReason ? ' (' + j.promptFeedback.blockReason + ')' : '')); continue; }
