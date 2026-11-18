@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.27.1';
+const SCRIPT_VERSION = '1.28.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -332,48 +332,30 @@ function badModel_(name) {
   } catch (e) {}
 }
 
-function geminiModels_() {
-  const cache = CacheService.getScriptCache(), c = cache.get('models');
-  if (c) return JSON.parse(c);
-  const key = props_().getProperty('GEMINI_KEY');
-  if (!key) return [];
-  const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models?pageSize=200', { headers: { 'x-goog-api-key': key }, muteHttpExceptions: true });
-  if (r.getResponseCode() !== 200) { AI_DETAIL = 'seznam modelů HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 150); return []; }
-  const names = (JSON.parse(r.getContentText()).models || [])
-    .filter(m => (m.supportedGenerationMethods || []).indexOf('generateContent') >= 0)
-    .map(m => m.name.replace('models/', ''))
-    .filter(n => /^gemini-/.test(n) && /flash/.test(n) && !/image|tts|live|audio|embed|robotics|computer|native|exp|thinking|customtools/.test(n));
-  const score = n => (/preview/.test(n) ? 0 : 1000) + parseFloat((n.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]) * 10 - (/lite/.test(n) ? 5 : 0) + (/latest/.test(n) ? 0.5 : 0);
-  names.sort((a, b) => score(b) - score(a));
-  let bad = []; try { bad = JSON.parse(cache.get('badmodels') || '[]'); } catch (e) {}
-  const top = names.filter(n => bad.indexOf(n) < 0).slice(0, 4);
-  if (top.length) cache.put('models', JSON.stringify(top), 21600);
-  return top;
-}
+// oficiální stabilní modely: hlavní a záložní (záložní se zkusí, jen když hlavní selže)
+const GEMINI_MODELS = ['gemini-2.5-flash', 'gemini-2.5-flash-lite'];
+function geminiModels_() { return GEMINI_MODELS.slice(); }
 
 function readWithAi_(meter, b64) {
   const key = props_().getProperty('GEMINI_KEY');
   if (!key) return { ok: false, error: 'nokey' };
   if (!meter || !b64) return { ok: false, error: 'data' };
   const models = geminiModels_();
-  if (!models.length) return { ok: false, error: 'nomodel', detail: AI_DETAIL || 'žádný model Gemini Flash' };
+  if (!models.length) return { ok: false, error: 'nomodel', detail: AI_DETAIL || 'žádný model Gemini' };
   const prompt = 'Na fotce je měřidlo: ' + meter.name + ' (druh: ' + meter.typeName + ', zobrazení: ' + meter.type + ', jednotka: ' + meter.unit + (Number(meter.digits) >= 2 ? ', počet číslic před čárkou: ' + meter.digits : '') + '). ' +
     (meter.hint ? meter.hint + ' ' : '') +
     'Přečti aktuální stav měřidla jako jedno číslo s desetinnou tečkou. Odpověz jen JSON {"value": číslo}. Když stav nejde spolehlivě přečíst, dej {"value": null}.';
   const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', temperature: 0 } });
-  const res = UrlFetchApp.fetchAll(models.map(m => ({
-    url: 'https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', method: 'post',
-    contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true })));
   const det = [];
-  for (let i = 0; i < res.length; i++) {
-    const r = res[i];
-    if (r.getResponseCode() !== 200) { det.push(models[i] + ' HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 120)); continue; }
+  for (const m of models) {
+    const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true });
+    if (r.getResponseCode() !== 200) { det.push(m + ' HTTP ' + r.getResponseCode() + ': ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 120)); continue; }
     try {
       const j = JSON.parse(r.getContentText()), t = j.candidates[0].content.parts.map(p => p.text || '').join('');
       const v = JSON.parse(t.replace(/```json|```/g, '')).value;
       if (v !== null && isFinite(Number(v))) return { ok: true, value: Number(v) };
-      det.push(models[i] + ': odpověď bez čísla');
-    } catch (e) { det.push(models[i] + ': ' + e.message); }
+      det.push(m + ': odpověď bez čísla');
+    } catch (e) { det.push(m + ': ' + e.message); }
   }
   return { ok: false, error: 'ai', detail: det.join(' | ') };
 }
