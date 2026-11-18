@@ -201,12 +201,16 @@ function paperTranscribe_(b64) {
     'Vrať pole objektů, jeden objekt pro každou přečtenou hodnotu: datum ve tvaru YYYY-MM-DD (nebo null), budova ("271".."275" nebo "Kotelna"), druh ("Vodoměr", "Plynoměr", "Elektroměr" nebo "TUV"), cislo (číslo elektroměru bez mezer, např. W060073, jinak prázdný řetězec), stav (číslo s desetinnou tečkou). Hodnoty nevymýšlej, nečitelné vynech.';
   // celý arch = JEDEN požadavek se strukturovanou odpovědí (pole řádků), ne jeden požadavek na řádek
   const schema = { type: 'ARRAY', items: { type: 'OBJECT', properties: { datum: { type: 'STRING', nullable: true }, budova: { type: 'STRING' }, druh: { type: 'STRING' }, cislo: { type: 'STRING' }, stav: { type: 'NUMBER' } }, required: ['budova', 'druh', 'stav'] } };
-  const payload = JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } } });
+  // bez „přemýšlení“ modelu je čtení rychlejší (2.5: rozpočet 0, řada 3: úroveň minimal); když model nastavení odmítne (400), jde se bez něj
+  const think = m => /gemini-2.5/.test(m) ? { thinkingBudget: 0 } : /gemini-3/.test(m) ? { thinkingLevel: 'minimal' } : null;
+  const pay = (m, withThink) => JSON.stringify({ contents: [{ parts: [{ text: prompt }, { inline_data: { mime_type: 'image/jpeg', data: b64 } }] }], generationConfig: Object.assign({ responseMimeType: 'application/json', responseSchema: schema, temperature: 0, maxOutputTokens: 8192 }, withThink && think(m) ? { thinkingConfig: think(m) } : {}) });
+  const call = (m, withThink) => UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: pay(m, withThink), muteHttpExceptions: true });
   const det = [];
   // hlavní model, při selhání záložní; vždy jen jeden požadavek najednou (záložní se nevolá zbytečně)
   for (const m of GEMINI_MODELS) {
     for (let attempt = 0; attempt < 2; attempt++) {
-      const r = UrlFetchApp.fetch('https://generativelanguage.googleapis.com/v1beta/models/' + m + ':generateContent', { method: 'post', contentType: 'application/json', headers: { 'x-goog-api-key': key }, payload: payload, muteHttpExceptions: true });
+      let r = call(m, true);
+      if (r.getResponseCode() === 400 && think(m)) r = call(m, false);
       const code = r.getResponseCode();
       if (code === 503 && attempt === 0) { Utilities.sleep(3000); continue; }
       if (code !== 200) { det.push(m + ': ' + (code === 429 ? 'kvóta AI vyčerpána (' + quotaWhy_(r.getContentText()) + ')' : code === 404 ? 'model není dostupný' : code === 503 ? 'model je přetížený' : 'HTTP ' + code + ' ' + r.getContentText().replace(/\s+/g, ' ').slice(0, 100))); break; }
