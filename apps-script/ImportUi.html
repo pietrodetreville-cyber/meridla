@@ -32,27 +32,20 @@
   .foot{padding:10px 12px;border-top:1px solid #e5e9ee;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
   .foot .msg{flex:1;min-width:160px;color:#374151;max-height:84px;overflow:auto;font-size:13px}
   .muted{color:#6b7280;font-size:12px}
-  #pk{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center;z-index:9}
-  #pk.on{display:flex}
-  #pkb{background:#fff;border-radius:12px;width:min(640px,94vw);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 12px 40px #0005}
-  #pkl{overflow:auto;padding:4px 8px;min-height:120px}
-  .pi{display:flex;gap:10px;align-items:center;padding:8px;border-bottom:1px solid #eef1f5;cursor:pointer;border-radius:6px}
-  .pi:hover{background:#f1f5fb}.pi.sel{background:#dbeafe}
-  .pi .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   @media (max-width:800px){.wrap{grid-template-columns:1fr;height:auto}}
 </style>
 </head>
 <body>
 <div class="wrap">
   <div class="pane">
-    <div class="ph"><b>Fotka archu</b><button class="sec" id="up" type="button">📷 Vybrat / nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"><select id="arch"></select><button class="sec" id="reread" type="button" title="Pustí vybranou fotku znovu do čtení AI">🔄 Přečíst znovu</button></div>
-    <div id="img"><div class="muted" style="padding:20px">Vyber arch, nebo nejdřív nahraj fotku v aplikaci (🔒 Admin).</div></div>
+    <div class="ph"><b>1. Fotka archu</b><button class="sec" id="up" type="button" title="Nahraje fotku z počítače do složky Papírové záznamy na Disku">📷 Nahrát fotku</button><input id="upf" type="file" accept="image/*" style="display:none"></div>
+    <div class="ph"><select id="arch" style="flex:1"></select><button id="reread" type="button" title="Pošle vybranou fotku do AI a přepíše z ní hodnoty do tabulky">🔄 Přečíst AI</button></div>
+    <div id="img"><div class="muted" style="padding:20px">Nahraj fotku archu, nebo vyber některou ze složky Papírové záznamy.</div></div>
   </div>
   <div class="pane">
-    <div class="ph"><b>Hodnoty k zápisu</b>
-      <select id="filt"></select>
-      <button class="sec" id="dropbad" type="button" title="Označí řádky s chybou jako vyřazené">Vyřadit chybné</button>
-      <button class="sec" id="droparch" type="button" title="Označí všechny nezapsané řádky vybraného archu jako vyřazené">Vyřadit celý arch</button>
+    <div class="ph"><b id="ttl">2. Hodnoty vybraného archu</b>
+      <button class="sec" id="droparch" type="button" title="Označí nezapsané řádky vybraného archu jako vyřazené (nic se nemaže)">Vyřadit řádky archu</button>
+      <button class="sec" id="dropold" type="button" style="display:none" title="Označí nezapsané řádky ostatních archů jako vyřazené (nic se nemaže)">Uklidit staré</button>
       <button class="sec" id="add" type="button">+ Řádek</button>
     </div>
     <div id="tw"><table><thead><tr><th style="width:34px" title="Zahrnout do zápisu">✓</th><th style="width:100px">Datum</th><th style="width:90px">Budova</th><th style="width:100px">Druh</th><th style="min-width:210px">Měřidlo</th><th style="width:100px">Stav</th><th style="width:190px">Výsledek</th></tr></thead><tbody id="rows"></tbody></table></div>
@@ -60,22 +53,18 @@
       <span class="msg" id="msg">Načítám…</span>
       <button class="sec" id="save" type="button">Uložit</button>
       <button class="sec" id="check" type="button">Zkontrolovat</button>
-      <button id="write" type="button">Zapsat do měření</button>
+      <button id="write" type="button">3. Zapsat do měření</button>
     </div>
   </div>
 </div>
-<div id="pk"><div id="pkb">
-  <div class="ph"><b>Vyber fotku archu</b><span class="muted">zdroj: Google Disk · složka Papírové záznamy</span></div>
-  <div id="pkl"></div>
-  <div class="foot"><a id="pkf" href="#" target="_blank" class="muted">Otevřít složku na Disku</a><span class="msg"></span>
-    <button class="sec" id="pkpc" type="button">Z počítače…</button><button class="sec" id="pkx" type="button">Zavřít</button><button id="pkgo" type="button" disabled>Přečíst AI</button></div>
-</div></div>
 <script>
-let D = null, rows = [], busy = false;
+let D = null, rows = [], files = [], busy = false;
 const $ = id => document.getElementById(id);
 const norm = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const closed = s => /^(ZAPSÁNO|VYŘAZENO)/.test(String(s || ''));
 function setMsg(t, bad) { const m = $('msg'); m.textContent = t; m.style.color = bad ? '#991b1b' : '#374151'; }
-function lock(on) { busy = on; ['save', 'check', 'write', 'add', 'up', 'reread', 'dropbad', 'droparch'].forEach(i => $(i).disabled = on); }
+function lock(on) { busy = on; ['save', 'check', 'write', 'add', 'up', 'reread', 'droparch', 'dropold', 'arch'].forEach(i => $(i).disabled = on); }
+const errText = e => (e && e.message) || String(e) || 'server nevrátil text chyby (možná vypršel čas, zkus menší fotku)';
 
 function opt(sel, value, label) { const o = document.createElement('option'); o.value = value; o.textContent = label === undefined ? value : label; sel.appendChild(o); return o; }
 function selectOf(values, current, blank) {
@@ -97,115 +86,135 @@ function meterSelect(current) {
   s.value = cur;
   return s;
 }
-function badge(status, mid) {
+function badge(status) {
   const b = document.createElement('span'); b.className = 'b';
   const t = String(status || '');
   if (/^ZAPSÁNO/.test(t)) { b.classList.add('ok'); b.textContent = t; }
   else if (/^OK/.test(t)) { b.classList.add('ok'); b.textContent = t.replace(/^OK, zapíše se/, 'Zapíše se'); }
   else if (/^CHYBA/.test(t)) { b.classList.add('err'); b.textContent = t.replace(/^CHYBA: /, ''); }
   else if (/^PŘESKOČENO/.test(t)) { b.classList.add('wait'); b.textContent = t; }
-  else if (/^VYŘAZENO/.test(t)) { b.classList.add('off2'); b.textContent = 'vyřazeno'; }
   else { b.classList.add('wait'); b.textContent = t || 'K ověření'; }
   return b;
 }
 
+// řádky vybraného archu (vyřazené se nezobrazují) a nezapsané řádky ostatních archů
+const cur = () => $('arch').value;
+const shown = () => rows.filter(r => r.foto === cur() && !/^VYŘAZENO/.test(r.status || ''));
+const strays = () => rows.filter(r => r.foto !== cur() && !closed(r.status) && !r.exclude);
+
 function render() {
-  const f = $('filt').value, tb = $('rows'); tb.textContent = '';
-  rows.forEach((r, i) => {
+  const tb = $('rows'); tb.textContent = '';
+  const list = shown();
+  list.forEach(r => {
     const st = String(r.status || '');
-    if (f === 'todo' && /^(ZAPSÁNO|VYŘAZENO)/.test(st)) return;
-    if (f.indexOf('arch:') === 0 && r.foto !== f.slice(5)) return;
     const done = /^ZAPSÁNO/.test(st), tr = document.createElement('tr');
     tr.className = done ? 'done' : (r.exclude ? 'off' : '');
     const td = () => tr.appendChild(document.createElement('td'));
-    const c0 = td(), ck = document.createElement('input'); ck.type = 'checkbox'; ck.checked = !r.exclude && !/^VYŘAZENO/.test(st); ck.disabled = done; ck.title = 'Zahrnout do zápisu';
+    const c0 = td(), ck = document.createElement('input'); ck.type = 'checkbox'; ck.checked = !r.exclude; ck.disabled = done; ck.title = 'Zahrnout do zápisu';
     ck.onchange = () => { r.exclude = !ck.checked; tr.className = r.exclude ? 'off' : ''; }; c0.appendChild(ck);
-    if (/^VYŘAZENO/.test(st) && r.exclude === undefined) r.exclude = true;
     const inp = (key, cls, ph) => { const c = td(); if (cls) c.className = cls; const e = document.createElement('input'); e.value = r[key] || ''; e.disabled = done; if (ph) e.placeholder = ph; e.oninput = () => { r[key] = e.value; r.dirty = true; }; c.appendChild(e); return e; };
     inp('datum', '', 'd. m. rrrr');
     const sel = (key, values, blank) => { const c = td(), s = selectOf(values, r[key], blank); s.disabled = done; s.onchange = () => { r[key] = s.value; r.dirty = true; }; c.appendChild(s); };
     sel('budova', D.buildings); sel('druh', D.types);
     const cm = td(), ms = meterSelect(r.cislo); ms.disabled = done; ms.onchange = () => { r.cislo = ms.value; r.dirty = true; }; cm.appendChild(ms);
     inp('stav', 'n');
-    const cs = td(); cs.appendChild(badge(st, r.mid));
-    if (r.foto) { const sp = document.createElement('div'); sp.className = 'muted'; sp.textContent = r.foto; cs.appendChild(sp); }
+    const cs = td(); cs.appendChild(badge(st));
     tb.appendChild(tr);
   });
-  if (!tb.children.length) { const tr = document.createElement('tr'), c = document.createElement('td'); c.colSpan = 7; c.className = 'muted'; c.style.padding = '16px'; c.textContent = 'Žádné řádky. Přidej řádek, nebo vyfoť arch v aplikaci.'; tr.appendChild(c); tb.appendChild(tr); }
+  if (!list.length) {
+    const tr = document.createElement('tr'), c = document.createElement('td'); c.colSpan = 7; c.className = 'muted'; c.style.padding = '16px';
+    c.textContent = cur() ? 'K tomuto archu zatím nejsou žádné hodnoty. Zvol Přečíst AI, nebo přidej řádek ručně.' : 'Nejdřív nahraj nebo vyber fotku archu.';
+    tr.appendChild(c); tb.appendChild(tr);
+  }
+  const n = strays().length, b = $('dropold');
+  b.style.display = n ? '' : 'none'; b.textContent = 'Uklidit staré (' + n + ')';
 }
 
-function fillFilter() {
-  const f = $('filt'), keep = f.value; f.textContent = '';
-  opt(f, 'all', 'Všechny řádky'); opt(f, 'todo', 'Jen nezapsané');
-  D.arches.forEach(a => opt(f, 'arch:' + a, 'Arch ' + a));
-  f.value = [...f.options].some(o => o.value === keep) ? keep : 'todo';
+// seznam archů = všechny fotky ve složce Papírové záznamy (nejnovější nahoře) + archy, které mají řádky v tabulce
+function archList() {
+  const names = files.map(f => f.name);
+  D.arches.forEach(a => { if (names.indexOf(a) < 0) names.push(a); });
+  return names;
 }
 function fillArches(want) {
-  const s = $('arch'), prev = want || s.value; s.textContent = ''; opt(s, '', '— vyber arch —');
-  D.arches.slice().reverse().forEach(a => opt(s, a));
-  const pick = prev && D.arches.indexOf(prev) >= 0 ? prev : (D.arches.length ? D.arches[D.arches.length - 1] : '');
-  const changed = pick !== prev || !!want || !s.dataset.shown; s.value = pick;
-  if (changed && pick) { s.dataset.shown = '1'; showPhoto(); }
+  const s = $('arch'), prev = want || s.value; s.textContent = '';
+  const list = archList();
+  if (!list.length) { opt(s, '', '— žádná fotka —'); s.value = ''; return showPhoto(); }
+  list.forEach(a => {
+    const n = rows.filter(r => r.foto === a && !/^VYŘAZENO/.test(r.status || '')).length;
+    opt(s, a, a + (n ? '  ·  ' + n + ' řádků' : '  ·  nepřečteno'));
+  });
+  const pick = prev && list.indexOf(prev) >= 0 ? prev : list[0];
+  const changed = pick !== s.dataset.shown; s.value = pick;
+  if (changed) { s.dataset.shown = pick; showPhoto(); }
 }
 function showPhoto() {
-  const n = $('arch').value, box = $('img');
-  if (!n) { box.innerHTML = '<div class="muted" style="padding:20px">Vyber arch.</div>'; return; }
+  const n = cur(), box = $('img');
+  if (!n) { box.innerHTML = '<div class="muted" style="padding:20px">Nahraj fotku archu, nebo vyber některou ze složky Papírové záznamy.</div>'; return; }
   box.innerHTML = '<div class="muted" style="padding:20px">Načítám fotku…</div>';
   google.script.run.withSuccessHandler(u => {
+    if (cur() !== n) return;
     box.textContent = '';
     if (!u) { box.innerHTML = '<div class="muted" style="padding:20px">Fotka ve složce Papírové záznamy nenalezena.</div>'; return; }
     const im = document.createElement('img'); im.src = u; im.onclick = () => im.classList.toggle('full'); box.appendChild(im);
-  }).withFailureHandler(e => { box.textContent = 'Fotku se nepodařilo načíst: ' + e.message; }).importUiPhoto(n);
+  }).withFailureHandler(e => { box.textContent = 'Fotku se nepodařilo načíst: ' + errText(e); }).importUiPhoto(n);
 }
 
 function load(keepMsg) {
   lock(true);
   google.script.run.withSuccessHandler(d => {
     D = d; rows = d.rows.map(r => Object.assign({}, r));
-    fillFilter(); fillArches(window.__newArch); window.__newArch = ''; render(); lock(false);
-    if (!keepMsg) setMsg(rows.length ? 'Načteno řádků: ' + rows.length + '. Oprav hodnoty podle fotky a zvol Zkontrolovat.' : 'List je prázdný.');
-  }).withFailureHandler(e => { lock(false); setMsg('Chyba načtení: ' + e.message, true); }).importUiData();
+    google.script.run.withSuccessHandler(r => { files = (r && r.files) || []; done(); }).withFailureHandler(() => { files = []; done(); }).importUiFiles();
+    function done() {
+      fillArches(window.__newArch); window.__newArch = ''; render(); lock(false);
+      if (!keepMsg) setMsg(cur() ? 'Zkontroluj hodnoty podle fotky, oprav je a zvol Zkontrolovat.' : 'Nahraj fotku archu.');
+    }
+  }).withFailureHandler(e => { lock(false); setMsg('Chyba načtení: ' + errText(e), true); }).importUiData();
 }
 
 function payload() {
   return rows.filter(r => !/^ZAPSÁNO/.test(r.status || '')).map(r => ({ row: r.row, datum: r.datum, budova: r.budova, druh: r.druh, cislo: r.cislo, stav: r.stav, poznamka: r.poznamka, foto: r.foto, exclude: !!r.exclude }));
 }
-function saveThen(next, label) {
+function saveThen(next) {
   lock(true); setMsg('Ukládám…');
-  google.script.run.withSuccessHandler(() => next()).withFailureHandler(e => { lock(false); setMsg('Uložení se nepovedlo: ' + e.message, true); }).importUiSave(payload());
+  google.script.run.withSuccessHandler(() => next()).withFailureHandler(e => { lock(false); setMsg('Uložení se nepovedlo: ' + errText(e), true); }).importUiSave(payload());
 }
 $('save').onclick = () => saveThen(() => { setMsg('Uloženo.'); load(true); setTimeout(() => setMsg('Uloženo.'), 400); });
 $('check').onclick = () => saveThen(() => {
   setMsg('Kontroluji…');
-  google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg(r.text || 'Zkontrolováno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Kontrola selhala: ' + e.message, true); }).importUiRun(false);
+  google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg(r.text || 'Zkontrolováno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Kontrola selhala: ' + errText(e), true); }).importUiRun(false);
 });
 $('write').onclick = () => {
-  const n = rows.filter(r => !r.exclude && !/^(ZAPSÁNO|VYŘAZENO)/.test(r.status || '')).length;
+  const s = strays().length;
+  if (s) return setMsg('V jiných archech je ' + s + ' nezapsaných řádků a zápis by je zapsal také. Nejdřív je odstraň tlačítkem Uklidit staré (jen je označí jako vyřazené).', true);
+  const n = shown().filter(r => !r.exclude && !closed(r.status)).length;
   if (!n) return setMsg('Není co zapsat.', true);
   if (!confirm('Opravdu zapsat ' + n + ' řádků do měření? Zapsané řádky se označí a podruhé se nezapíšou.')) return;
   saveThen(() => {
     setMsg('Zapisuji…');
-    google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg(r.text || 'Zapsáno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Zápis selhal: ' + e.message, true); }).importUiRun(true);
+    google.script.run.withSuccessHandler(r => { load(true); setTimeout(() => setMsg(r.text || 'Zapsáno.'), 400); }).withFailureHandler(e => { lock(false); setMsg('Zápis selhal: ' + errText(e), true); }).importUiRun(true);
   });
 };
 $('add').onclick = () => {
-  const last = rows.filter(r => r.datum).pop();
-  rows.push({ row: 0, datum: last ? last.datum : '', budova: '', druh: '', cislo: '', stav: '', poznamka: '', foto: $('arch').value || '', status: '' });
-  $('filt').value = 'all'; render(); $('tw').scrollTop = 1e9;
+  if (!cur()) return setMsg('Nejdřív vyber fotku archu.', true);
+  const last = shown().filter(r => r.datum).pop();
+  rows.push({ row: 0, datum: last ? last.datum : '', budova: '', druh: '', cislo: '', stav: '', poznamka: '', foto: cur(), status: '' });
+  render(); $('tw').scrollTop = 1e9;
 };
 // vyřazení = jen označení VYŘAZENO (nic se nemaže), import takové řádky přeskočí
 function dropRows(pred, label) {
   if (busy) return;
-  const hit = rows.filter(r => !/^(ZAPSÁNO|VYŘAZENO)/.test(r.status || '') && pred(r));
+  const hit = rows.filter(r => !closed(r.status) && pred(r));
   if (!hit.length) return setMsg('Není co vyřadit.', true);
   if (!confirm('Vyřadit ' + hit.length + ' řádků (' + label + ')? Nic se nemaže, řádky se jen označí jako VYŘAZENO a import je přeskočí.')) return;
   hit.forEach(r => { r.exclude = true; });
   saveThen(() => { load(true); setTimeout(() => setMsg('Vyřazeno řádků: ' + hit.length + '.'), 400); });
 }
-$('dropbad').onclick = () => dropRows(r => /^CHYBA/.test(r.status || ''), 's chybou');
-$('droparch').onclick = () => { const a = $('arch').value; if (!a) return setMsg('Nejdřív vyber arch.', true); dropRows(r => r.foto === a, 'z archu ' + a); };
-$('filt').onchange = render;
-// nahrání fotky archu z počítače: zmenší se na 2000 px, uloží se na Disk a AI ji přepíše do řádků
+$('droparch').onclick = () => { const a = cur(); if (!a) return setMsg('Nejdřív vyber arch.', true); dropRows(r => r.foto === a, 'z vybraného archu'); };
+$('dropold').onclick = () => dropRows(r => r.foto !== cur(), 'z ostatních archů');
+$('arch').onchange = () => { render(); showPhoto(); };
+
+// nahrání fotky z počítače: zmenší se na 2000 px a uloží na Disk; objeví se v seznamu, čte se až tlačítkem Přečíst AI
 function resizeFile(file) {
   return createImageBitmap(file).then(bmp => { const k = Math.min(1, 2000 / Math.max(bmp.width, bmp.height)), c = document.createElement('canvas'); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k); c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height); return c.toDataURL('image/jpeg', 0.9).split(',')[1]; });
 }
@@ -215,57 +224,27 @@ function uploadArch(file) {
   resizeFile(file).then(b64 => {
     google.script.run.withSuccessHandler(r => {
       if (!r || !r.ok) { lock(false); return setMsg('Nahrání se nepovedlo' + (r && r.error ? ' (' + r.error + ')' : '') + '.', true); }
-      lock(false); setMsg('Fotka uložena na Disk. Vyber ji v seznamu a zvol Přečíst AI.'); window.__pickName = r.name; $('up').click();
-    }).withFailureHandler(e => { lock(false); setMsg('Nahrání selhalo: ' + e.message, true); }).importUiUpload(b64);
+      window.__newArch = r.name; load(true);
+      setTimeout(() => setMsg('Fotka je uložená a vybraná v seznamu. Zvol Přečíst AI.'), 700);
+    }).withFailureHandler(e => { lock(false); setMsg('Nahrání selhalo: ' + errText(e), true); }).importUiUpload(b64);
   }).catch(() => { lock(false); setMsg('Fotku se nepodařilo zpracovat.', true); });
 }
 function aiDone(r) {
   if (!r || !r.ok) { lock(false); return setMsg(r && r.error === 'nofile' ? 'Fotka ve složce Papírové záznamy nenalezena.' : r && r.error === 'toobig' ? 'Fotka je větší než 15 MB, zmenši ji.' : 'Čtení se nepovedlo' + (r && r.detail ? ': ' + r.detail : '.'), true); }
   window.__newArch = r.name; load(true);
-  setTimeout(() => setMsg(r.count ? 'AI přepsala ' + r.count + ' hodnot. Zkontroluj je podle fotky a oprav.' : 'AI hodnoty nepřečetla' + (r.detail ? ' (' + r.detail + ')' : '') + '. Zkus to za chvíli znovu, nebo doplň ručně tlačítkem + Řádek.', !r.count), 700);
+  setTimeout(() => setMsg(r.count ? 'AI přepsala ' + r.count + ' hodnot. Zkontroluj je podle fotky a oprav.' : 'AI hodnoty nepřečetla' + (r.detail ? ' (' + r.detail + ')' : '') + '. Zkus to později, nebo doplň ručně tlačítkem + Řádek.', !r.count), 700);
 }
 $('reread').onclick = () => {
-  const n = $('arch').value; if (!n || busy) return setMsg('Nejdřív vyber arch.', true);
-  const have = rows.filter(r => r.foto === n && !/^VYŘAZENO/.test(r.status || '')).length;
-  if (have && !confirm('K tomuto archu už je v tabulce ' + have + ' řádků. Čtení přidá další, takže se mohou zdvojit (nechtěné pak odškrtni). Pokračovat?')) return;
-  lock(true); setMsg('AI čte fotku znovu (až minutu)…');
-  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + ((e && e.message) || String(e) || 'server nevrátil text chyby (možná vypršel čas, zkus menší fotku)'), true); }).importUiReread(n);
+  const n = cur(); if (!n || busy) return setMsg('Nejdřív vyber arch.', true);
+  const have = shown().length;
+  if (have && !confirm('K tomuto archu už je v tabulce ' + have + ' řádků. Čtení přidá další, takže se mohou zdvojit. Pokračovat?')) return;
+  lock(true); setMsg('AI čte fotku (až minutu)…');
+  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + errText(e), true); }).importUiReread(n);
 };
-let pkSel = null;
-function pkRender(files) {
-  const l = $('pkl'); l.textContent = '';
-  if (!files.length) { l.innerHTML = '<div class="muted" style="padding:16px">Složka je zatím prázdná. Nahraj fotky na Disk, nebo použij Z počítače…</div>'; return; }
-  files.forEach(f => {
-    const d = document.createElement('div'); d.className = 'pi';
-    const n = rows.filter(r => r.foto === f.name).length;
-    const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = f.name; nm.title = f.name;
-    const dt = document.createElement('span'); dt.className = 'muted'; dt.textContent = f.date + ' · ' + f.kb + ' kB';
-    const bd = document.createElement('span'); bd.className = 'b ' + (n ? 'ok' : 'wait'); bd.textContent = n ? 'načteno: ' + n + ' řádků' : 'nepřečteno';
-    d.append(nm, dt, bd);
-    if (window.__pickName && f.name === window.__pickName) { pkSel = f; d.classList.add('sel'); $('pkgo').disabled = false; window.__pickName = ''; }
-    d.onclick = () => { pkSel = f; [...l.children].forEach(c => c.classList.remove('sel')); d.classList.add('sel'); $('pkgo').disabled = false; };
-    d.ondblclick = () => { pkSel = f; $('pkgo').click(); };
-    l.appendChild(d);
-  });
-}
-$('up').onclick = () => {
-  pkSel = null; $('pkgo').disabled = true; $('pk').classList.add('on'); $('pkl').innerHTML = '<div class="muted" style="padding:16px">Načítám seznam z Disku…</div>';
-  google.script.run.withSuccessHandler(r => { $('pkf').href = r.folderUrl; pkRender(r.files); }).withFailureHandler(e => { $('pkl').textContent = 'Seznam se nepodařilo načíst: ' + e.message; }).importUiFiles();
-};
-$('pkx').onclick = () => $('pk').classList.remove('on');
-$('pkpc').onclick = () => { $('pk').classList.remove('on'); $('upf').click(); };
-$('pkgo').onclick = () => {
-  if (!pkSel || busy) return;
-  const f = pkSel, have = rows.filter(r => r.foto === f.name && !/^VYŘAZENO/.test(r.status || '')).length;
-  if (have && !confirm('K tomuto archu už je v tabulce ' + have + ' řádků. Čtení přidá další, takže se mohou zdvojit (nechtěné pak odškrtni). Pokračovat?')) return;
-  $('pk').classList.remove('on'); lock(true); setMsg('AI čte fotku ' + f.name + ' (až minutu)…');
-  window.__newArch = f.name;
-  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + ((e && e.message) || String(e) || 'server nevrátil text chyby (možná vypršel čas, zkus menší fotku)'), true); }).importUiRereadId(f.id);
-};
+$('up').onclick = () => $('upf').click();
 $('upf').onchange = e => { uploadArch(e.target.files[0]); e.target.value = ''; };
 document.addEventListener('dragover', e => e.preventDefault());
-document.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.indexOf("image/") === 0) uploadArch(f); });
-$('arch').onchange = showPhoto;
+document.addEventListener('drop', e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f && f.type.indexOf('image/') === 0) uploadArch(f); });
 load();
 </script>
 </body>
