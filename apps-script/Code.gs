@@ -9,13 +9,14 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.30.0';
+const SCRIPT_VERSION = '1.31.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
 const SHEET_TYPES = 'Typy';
 const SHEET_ALERTS = 'Upozornění';
 const SHEET_BUILDINGS = 'Budovy';
+const SHEET_PRICES = 'Ceny';
 const FOLDER_NAME = 'Fotodokumentace odečtů';
 const PLACES_NAME = 'Místa měřidel – plánky a fotky';
 const DRIVE_ROOT = 'SVJ_app';
@@ -292,7 +293,7 @@ function doGet(e) {
   if (!who) return ok_({ ok: false, error: 'token' });
   if (e.parameter.action === 'history') {
     const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
-    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })) });
+    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), prices: pricesFor_((meters_().find(m => m.id === e.parameter.id) || {}).typeName) });
   }
   if (e.parameter.action === 'rphoto') return ok_(recordImage_(e.parameter.f));
   if (e.parameter.action === 'place') {
@@ -628,6 +629,34 @@ function resolvePlaceId_(ref) {
   if (!fid) return '';
   const it = DriveApp.getFolderById(fid).getFilesByName(ref);
   return it.hasNext() ? it.next().getId() : '';
+}
+
+// ---------- ceny za jednotku (list Ceny) ----------
+// Typ | Cena za jednotku (Kč, s DPH) | Platná od (prázdné = vždy) | Poznámka. Pro jeden typ může být víc řádků s různým datem.
+function ensurePrices_() {
+  const ss = SpreadsheetApp.getActive();
+  let sh = ss.getSheetByName(SHEET_PRICES);
+  if (sh) return sh;
+  sh = ss.insertSheet(SHEET_PRICES);
+  sh.appendRow(['Typ', 'Cena za jednotku (Kč, s DPH)', 'Platná od', 'Poznámka']);
+  sh.appendRow(['Elektroměr', 8.17, '', 'Průměr z 10 faktur PRE (19. 7. 2025 – 23. 7. 2026): 111 586 Kč s DPH / 13 656 kWh, včetně pevných plateb']);
+  sh.setFrozenRows(1); sh.getRange(1, 1, 1, 4).setFontWeight('bold');
+  return sh;
+}
+function pricesFor_(typeName) {
+  try {
+    const sh = ensurePrices_(), v = sh.getDataRange().getValues();
+    const want = String(typeName || '').normalize('NFC').trim().toLowerCase(), out = [];
+    v.slice(1).forEach(r => {
+      if (String(r[0]).normalize('NFC').trim().toLowerCase() !== want) return;
+      const p = Number(String(r[1]).replace(/\s/g, '').replace(',', '.'));
+      if (!isFinite(p) || r[1] === '') return;
+      let from = 0;
+      if (r[2] !== '' && r[2] !== null) { const d = Object.prototype.toString.call(r[2]) === '[object Date]' ? r[2] : new Date(r[2]); if (!isNaN(d.getTime())) from = d.getTime(); }
+      out.push({ from: from, price: p });
+    });
+    return out.sort((a, b) => a.from - b.from);
+  } catch (e) { return []; }
 }
 
 // id souboru z odkazu na Disk (…/d/ID/… nebo …?id=ID)

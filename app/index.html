@@ -99,6 +99,9 @@ img.shot{width:100%;border-radius:10px;display:block}
 .tiles b{display:block;font-size:1.05rem}
 .tiles span{font-size:.72rem;color:var(--mut)}
 #hbody svg{width:100%;height:auto;display:block;touch-action:pan-y;user-select:none;-webkit-user-select:none}
+.costbox{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;background:#66728218;border-radius:12px;padding:9px 12px;margin:0 0 6px}
+.costbox b{font-size:1.05rem}
+.costbox span{color:var(--mut);font-size:.74rem}
 .hselbox{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin:6px 2px 0}
 .hselbox b{font-size:1.45rem;background:linear-gradient(90deg,#22c3d6,var(--acc));-webkit-background-clip:text;background-clip:text;color:transparent}
 .hselbox span{color:var(--mut);font-size:.8rem}
@@ -296,7 +299,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.31.1';
+const VERSION = '1.32.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -750,7 +753,7 @@ async function loadHist() {
     try {
       const r = await api('?token=' + encodeURIComponent(token()) + '&action=history&id=' + encodeURIComponent(current.id));
       if (!r.ok) throw new Error(r.error || 'chyba');
-      hist = { id: current.id, range: hist.range, offset: 0, note: '', readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', pid: x.pid || '' })) };
+      hist = { id: current.id, range: hist.range, offset: 0, note: '', readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', pid: x.pid || '' })), prices: (r.prices || []).map(q => ({ from: Number(q.from), price: Number(q.price) })) };
       autoOffset();
     } catch (e) { body.innerHTML = '<p class="note warn">Detail se nepodařilo načíst' + (e instanceof TypeError ? ' (bez připojení)' : '') + '.</p>'; return; }
   }
@@ -769,8 +772,9 @@ function renderHist() {
   for (let i = 1; i < rs.length; i++) { const ms = rs[i].t - rs[i - 1].t, d = rs[i].v - rs[i - 1].v; if (ms > 0 && d >= 0) pairs.push({ t0: rs[i - 1].t.getTime(), t1: rs[i].t.getTime(), inc: d }); }
   const overlap = (p, x, y) => Math.max(0, Math.min(p.t1, y) - Math.max(p.t0, x));
   buckets.forEach(bk => { pairs.forEach(p => { const o = overlap(p, bk.start.getTime(), bk.end.getTime()); if (o) bk.sum += p.inc * o / (p.t1 - p.t0); }); });
-  let total = 0, cover = 0;
-  pairs.forEach(p => { const o = overlap(p, wa, wb); if (o) { total += p.inc * o / (p.t1 - p.t0); cover += o; } });
+  let total = 0, cover = 0, cost = 0;
+  const prices = hist.prices || [], priceAt = t => { let c = null; prices.forEach(q => { if (q.from <= t) c = q.price; }); return c; };
+  pairs.forEach(p => { const o = overlap(p, wa, wb); if (o) { const part = p.inc * o / (p.t1 - p.t0); total += part; cover += o; const pc = priceAt((p.t0 + p.t1) / 2); if (pc !== null) cost += part * pc; } });
   const avgDay = cover > 0 ? total / (cover / DAY) : null;
   const idx = [];
   let resets = 0;
@@ -836,6 +840,7 @@ function renderHist() {
   }).join('');
   $('hbody').innerHTML =
     '<div class="tiles"><div><b>' + fmtD(total) + ' ' + unit + '</b><span>spotřeba</span></div><div><b>' + (avgDay === null ? '–' : fmtD(avgDay) + ' ' + unit) + '</b><span>průměr za den</span></div><div><b>' + idx.length + '</b><span>odečtů</span></div></div>' +
+    (prices.length ? '<div class="costbox">💰 <b>≈ ' + Math.round(cost).toLocaleString('cs-CZ') + ' Kč</b><span>při ceně ' + fmtD(prices[prices.length - 1].price) + ' Kč/' + unit + ' (s DPH, vč. pevných plateb)</span></div>' : '') +
     (pts.length ? '<div class="hselbox"><b id="hselv"></b><span id="hseld"></span></div><svg id="hsvg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Průměrná denní spotřeba">' + chart + '</svg>' : '<p class="note">Na graf jsou potřeba aspoň dva odečty.</p>') +
     '<p class="note" style="margin:4px 0 0">Průměrná denní spotřeba. Klepni na graf pro hodnotu.</p>' +
     (resets ? '<p class="note warn">V období je ' + resets + ' odečet s nižším stavem než předtím. Do spotřeby se nezapočítal.</p>' : '') +
