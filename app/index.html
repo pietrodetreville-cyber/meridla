@@ -296,7 +296,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.31.0';
+const VERSION = '1.31.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -837,7 +837,7 @@ function renderHist() {
   $('hbody').innerHTML =
     '<div class="tiles"><div><b>' + fmtD(total) + ' ' + unit + '</b><span>spotřeba</span></div><div><b>' + (avgDay === null ? '–' : fmtD(avgDay) + ' ' + unit) + '</b><span>průměr za den</span></div><div><b>' + idx.length + '</b><span>odečtů</span></div></div>' +
     (pts.length ? '<div class="hselbox"><b id="hselv"></b><span id="hseld"></span></div><svg id="hsvg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Průměrná denní spotřeba">' + chart + '</svg>' : '<p class="note">Na graf jsou potřeba aspoň dva odečty.</p>') +
-    '<p class="note" style="margin:4px 0 0">Čára ukazuje průměrnou denní spotřebu (' + unit + ' za den) mezi sousedními odečty. Klepni nebo táhni prstem po grafu pro přesnou hodnotu. Za dobu po posledním odečtu se nic neodhaduje.</p>' +
+    '<p class="note" style="margin:4px 0 0">Průměrná denní spotřeba. Klepni na graf pro hodnotu.</p>' +
     (resets ? '<p class="note warn">V období je ' + resets + ' odečet s nižším stavem než předtím. Do spotřeby se nezapočítal.</p>' : '') +
     (idx.length ? '<div style="margin-top:6px">' + rows + '</div>' : '<p class="note">V tomto období není žádný odečet.</p>');
   if (pts.length) {
