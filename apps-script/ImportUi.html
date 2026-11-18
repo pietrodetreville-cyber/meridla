@@ -220,7 +220,7 @@ function uploadArch(file) {
   }).catch(() => { lock(false); setMsg('Fotku se nepodařilo zpracovat.', true); });
 }
 function aiDone(r) {
-  if (!r || !r.ok) { lock(false); return setMsg(r && r.error === 'nofile' ? 'Fotka ve složce Papírové záznamy nenalezena.' : r && r.error === 'toobig' ? 'Fotka je větší než 15 MB, zmenši ji.' : 'Čtení se nepovedlo.', true); }
+  if (!r || !r.ok) { lock(false); return setMsg(r && r.error === 'nofile' ? 'Fotka ve složce Papírové záznamy nenalezena.' : r && r.error === 'toobig' ? 'Fotka je větší než 15 MB, zmenši ji.' : 'Čtení se nepovedlo' + (r && r.detail ? ': ' + r.detail : '.'), true); }
   window.__newArch = r.name; load(true);
   setTimeout(() => setMsg(r.count ? 'AI přepsala ' + r.count + ' hodnot. Zkontroluj je podle fotky a oprav.' : 'AI hodnoty nepřečetla' + (r.detail ? ' (' + r.detail + ')' : '') + '. Zkus to za chvíli znovu, nebo doplň ručně tlačítkem + Řádek.', !r.count), 700);
 }
@@ -229,7 +229,7 @@ $('reread').onclick = () => {
   const have = rows.filter(r => r.foto === n && !/^VYŘAZENO/.test(r.status || '')).length;
   if (have && !confirm('K tomuto archu už je v tabulce ' + have + ' řádků. Čtení přidá další, takže se mohou zdvojit (nechtěné pak odškrtni). Pokračovat?')) return;
   lock(true); setMsg('AI čte fotku znovu (až minutu)…');
-  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + e.message, true); }).importUiReread(n);
+  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + ((e && e.message) || String(e) || 'server nevrátil text chyby (možná vypršel čas, zkus menší fotku)'), true); }).importUiReread(n);
 };
 let pkSel = null;
 function pkRender(files) {
@@ -260,7 +260,7 @@ $('pkgo').onclick = () => {
   if (have && !confirm('K tomuto archu už je v tabulce ' + have + ' řádků. Čtení přidá další, takže se mohou zdvojit (nechtěné pak odškrtni). Pokračovat?')) return;
   $('pk').classList.remove('on'); lock(true); setMsg('AI čte fotku ' + f.name + ' (až minutu)…');
   window.__newArch = f.name;
-  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + e.message, true); }).importUiRereadId(f.id);
+  google.script.run.withSuccessHandler(aiDone).withFailureHandler(e => { lock(false); setMsg('Čtení selhalo: ' + ((e && e.message) || String(e) || 'server nevrátil text chyby (možná vypršel čas, zkus menší fotku)'), true); }).importUiRereadId(f.id);
 };
 $('upf').onchange = e => { uploadArch(e.target.files[0]); e.target.value = ''; };
 document.addEventListener('dragover', e => e.preventDefault());

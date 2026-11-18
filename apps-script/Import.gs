@@ -304,14 +304,16 @@ function importUiFiles() {
 }
 
 // přečte AI fotku ze složky podle id souboru
-function importUiRereadId(id) {
+function importUiRereadId(id) { try { return importUiRereadId_(id); } catch (e) { return { ok: false, error: 'exc', detail: String(e && e.message || e) }; } }
+function importUiRereadId_(id) {
   let f; try { f = DriveApp.getFileById(String(id || '')); } catch (e) { return { ok: false, error: 'nofile' }; }
   if (f.getSize() > 15 * 1024 * 1024) return { ok: false, error: 'toobig' };
   return paperRead_(Utilities.base64Encode(f.getBlob().getBytes()), f.getName());
 }
 
 // znovu pustí do čtení už uloženou fotku archu (např. když první čtení selhalo na přetížení AI)
-function importUiReread(name) {
+function importUiReread(name) { try { return importUiReread_(name); } catch (e) { return { ok: false, error: 'exc', detail: String(e && e.message || e) }; } }
+function importUiReread_(name) {
   const it = child_(driveRoot_(), PAPER_FOLDER).getFilesByName(String(name || ''));
   if (!it.hasNext()) return { ok: false, error: 'nofile' };
   return paperRead_(Utilities.base64Encode(it.next().getBlob().getBytes()), String(name));
