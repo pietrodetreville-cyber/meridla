@@ -296,7 +296,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.30.0';
+const VERSION = '1.31.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -497,6 +497,24 @@ async function showPlace(m) {
   else st.textContent = lastPlaceErr === 'nofile' ? 'Soubor „' + m.placePhoto + '“ se ve složce Místa měřidel nenašel. Zkontroluj název včetně přípony v tabulce.' : lastPlaceErr === 'big' ? 'Soubor je příliš velký, zmenši ho.' : 'Fotku místa se nepodařilo načíst z Disku (zkontroluj oprávnění skriptu nebo nasazení).';
 }
 $('lb').onclick = () => $('lb').classList.add('hide');
+const recMem = {};
+async function showRecordPhoto(pid, title) {
+  const img = $('lbimg'), st = $('lbstat');
+  img.removeAttribute('src'); img.style.visibility = 'hidden';
+  st.innerHTML = '<span class="spin"></span>Načítám fotku…'; st.style.display = '';
+  $('lb').classList.remove('hide');
+  let d = recMem[pid] || null, err = '';
+  if (!d) {
+    try {
+      const r = await api('?token=' + encodeURIComponent(token()) + '&action=rphoto&f=' + encodeURIComponent(pid));
+      if (r.ok) { d = 'data:' + r.mime + ';base64,' + r.data; recMem[pid] = d; } else err = r.error || 'fail';
+    } catch (e) { err = e instanceof TypeError ? 'offline' : 'fail'; }
+  }
+  if ($('lb').classList.contains('hide')) return;
+  if (d) { img.src = d; img.style.visibility = ''; st.style.display = 'none'; }
+  else st.textContent = err === 'offline' ? 'Bez připojení. Fotku nejde načíst.' : err === 'big' ? 'Soubor je příliš velký, nejde ho zobrazit.' : err === 'nofile' ? 'Fotka nebyla nalezena.' : 'Fotku se nepodařilo načíst.';
+}
+$('hbody').addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[data-pid]'); if (!a) return; e.preventDefault(); showRecordPhoto(a.dataset.pid, a.dataset.t); });
 $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(current); };
 
 // ================= správce: nahrání fotky místa (PIN) =================
@@ -732,7 +750,7 @@ async function loadHist() {
     try {
       const r = await api('?token=' + encodeURIComponent(token()) + '&action=history&id=' + encodeURIComponent(current.id));
       if (!r.ok) throw new Error(r.error || 'chyba');
-      hist = { id: current.id, range: hist.range, offset: 0, note: '', readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', photo: x.photo || '' })) };
+      hist = { id: current.id, range: hist.range, offset: 0, note: '', readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', pid: x.pid || '' })) };
       autoOffset();
     } catch (e) { body.innerHTML = '<p class="note warn">Detail se nepodařilo načíst' + (e instanceof TypeError ? ' (bez připojení)' : '') + '.</p>'; return; }
   }
@@ -812,8 +830,8 @@ function renderHist() {
       else { l1 = '+' + fmtD(d) + ' za ' + fmtDur(ms); l2 = ms >= 36e5 ? 'Ø ' + fmtD(d / (ms / DAY)) + ' ' + unit + ' / den' : 'Ø nelze určit (příliš krátký úsek)'; }
     }
     // zdroj záznamu: z archu (papír), z fotky měřidla, přečtené AI, nebo jen ručně; u fotky je odkaz na ni
-    const sr = /papír/.test(x.src) ? (x.photo ? '📄 z archu' : '📄 z papíru') : /AI/.test(x.src) ? (x.photo ? '📷 z fotky, četla AI' : '🤖 přečetla AI') : x.photo ? '📷 z fotky' : (x.src && x.src !== 'ručně' ? x.src : '✍️ zadáno ručně');
-    const srh = x.photo ? '<a href="' + x.photo.replace(/"/g, '') + '" target="_blank" rel="noopener">' + sr.replace(/</g, '&lt;') + '</a>' : sr.replace(/</g, '&lt;');
+    const sr = /papír/.test(x.src) ? (x.pid ? '📄 z archu' : '📄 z papíru') : /AI/.test(x.src) ? (x.pid ? '📷 z fotky, četla AI' : '🤖 přečetla AI') : x.pid ? '📷 z fotky' : (x.src && x.src !== 'ručně' ? x.src : '✍️ zadáno ručně');
+    const srh = x.pid ? '<a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="' + sr.replace(/[<"]/g, '') + '">' + sr.replace(/</g, '&lt;') + '</a>' : sr.replace(/</g, '&lt;');
     return '<div class="hrow' + (neg ? ' neg' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '<br><span class="src">' + srh + '</span></span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
   }).join('');
   $('hbody').innerHTML =

@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.29.0';
+const SCRIPT_VERSION = '1.30.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -292,8 +292,9 @@ function doGet(e) {
   if (!who) return ok_({ ok: false, error: 'token' });
   if (e.parameter.action === 'history') {
     const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
-    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, photo: /^https:\/\/(drive|docs)\.google\.com\//.test(x.photo) ? x.photo : '' })) });
+    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })) });
   }
+  if (e.parameter.action === 'rphoto') return ok_(recordImage_(e.parameter.f));
   if (e.parameter.action === 'place') {
     const mm = meters_().find(x => x.id === e.parameter.id);
     return ok_(mm && mm.placePhoto ? placeImage_(mm.placePhoto) : { ok: false, error: 'none' });
@@ -627,6 +628,30 @@ function resolvePlaceId_(ref) {
   if (!fid) return '';
   const it = DriveApp.getFolderById(fid).getFilesByName(ref);
   return it.hasNext() ? it.next().getId() : '';
+}
+
+// id souboru z odkazu na Disk (…/d/ID/… nebo …?id=ID)
+function driveId_(url) {
+  const m = String(url || '').match(/\/d\/([\w-]{20,})/) || String(url || '').match(/[?&]id=([\w-]{20,})/);
+  return m ? m[1] : '';
+}
+// fotka k záznamu (arch nebo fotka měřidla) se čte přes skript, takže ji uvidí každý, kdo má aplikaci, bez oprávnění k Disku.
+// Povolené jsou jen soubory, které jsou uvedené v listu Odečty.
+function recordImage_(fid) {
+  try {
+    fid = String(fid || '');
+    if (!/^[\w-]{20,}$/.test(fid)) return { ok: false, error: 'nofile' };
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS), n = sh.getLastRow() - 1;
+    if (n < 1) return { ok: false, error: 'nofile' };
+    const col = sh.getRange(2, 8, n, 1).getValues();
+    if (!col.some(r => String(r[0]).indexOf(fid) >= 0)) return { ok: false, error: 'nofile' };
+    const r = UrlFetchApp.fetch('https://drive.google.com/thumbnail?id=' + fid + '&sz=w1600', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
+    let blob = null;
+    if (r.getResponseCode() === 200) blob = r.getBlob();
+    else { const b = DriveApp.getFileById(fid).getBlob(); if (b.getBytes().length <= 2500000) blob = b; }
+    if (!blob) return { ok: false, error: 'big' };
+    return { ok: true, mime: blob.getContentType() || 'image/jpeg', data: Utilities.base64Encode(blob.getBytes()) };
+  } catch (e) { return { ok: false, error: 'fail' }; }
 }
 
 function placeImage_(ref) {
