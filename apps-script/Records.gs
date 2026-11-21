@@ -1,0 +1,145 @@
+// ---------- záznamy odečtů: úprava, vyřazení, přečtení AI znovu a zámek měřidla ----------
+// Pravidla:
+//  - autor záznamu ho smí upravit do 24 hodin od času odečtu
+//  - správce (PIN) smí kdykoli upravit, vyřadit nebo znovu pustit AI
+//  - vyřazený záznam zůstane v tabulce (sloupec Vyřazeno, červené pozadí), ale nepočítá se
+//  - při focení / zápisu je měřidlo pro ostatní zablokované (zámek v cache vyprší sám za 10 minut)
+
+const EDIT_WINDOW_MS = 24 * 3600 * 1000;
+const LOCK_TTL_S = 600;
+const COL_OUT = 14, COL_EDIT = 15;
+
+function nowText_() { return Utilities.formatDate(new Date(), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'd. M. yyyy H:mm'); }
+
+function ensureReadingCols_(sh) {
+  if (!sh.getRange(1, COL_OUT).getValue()) sh.getRange(1, COL_OUT).setValue('Vyřazeno');
+  if (!sh.getRange(1, COL_EDIT).getValue()) sh.getRange(1, COL_EDIT).setValue('Upraveno');
+}
+
+// záznam podle ID záznamu; starší záznamy bez ID se hledají podle čísla řádku ("row-12")
+function findReading_(sh, rid) {
+  rid = String(rid || '');
+  if (!rid) return null;
+  const data = sh.getDataRange().getValues();
+  let i = -1;
+  if (/^r\d+$/.test(rid)) { i = Number(rid.slice(1)) - 1; if (i < 1 || i >= data.length || !data[i][0]) i = -1; }
+  else i = data.findIndex((r, k) => k > 0 && String(r[12]) === rid);
+  return i < 0 ? null : { n: i + 1, r: data[i] };
+}
+
+// přepočítá "Předchozí" a "Přírůstek" u všech záznamů měřidla (vyřazené a bez hodnoty se přeskočí)
+function relink_(sh, meterId) {
+  const data = sh.getDataRange().getValues(), rows = [];
+  data.forEach((r, i) => { if (i > 0 && String(r[1]) === String(meterId) && r[3] !== '' && r[3] !== null && isFinite(Number(r[3])) && !r[COL_OUT - 1]) rows.push({ n: i + 1, t: new Date(r[0]).getTime(), v: Number(r[3]), e: r[4], f: r[5] }); });
+  rows.sort((a, b) => a.t - b.t);
+  let prev = null;
+  rows.forEach(x => {
+    const e = prev === null ? '' : prev, f = prev === null ? '' : Math.round((x.v - prev) * 1000) / 1000;
+    if (x.e !== e || x.f !== f) sh.getRange(x.n, 5, 1, 2).setValues([[e, f]]);
+    prev = x.v;
+  });
+}
+
+// smí osoba záznam upravit? autor do 24 h, jinak správce s PINem
+function recordAuth_(P, who, rec, body) {
+  const meter = meters_().find(m => m.id === String(rec.r[1]));
+  if (!meter || !canEdit_(P, meter)) return { ok: false, error: 'forbidden' };
+  const age = Date.now() - new Date(rec.r[0]).getTime();
+  if (String(rec.r[9]) === who && age <= EDIT_WINDOW_MS) return { ok: true, meter: meter, admin: false };
+  if (!body.pin) return { ok: false, error: String(rec.r[9]) === who ? 'expired' : 'forbidden' };
+  const chk = adminCheck_(body.pin);
+  return chk.ok ? { ok: true, meter: meter, admin: true } : chk;
+}
+
+function applyValue_(sh, rec, meter, value, who, how, extraNote) {
+  const n = rec.n, old = rec.r[3];
+  let note = String(rec.r[6] || '').replace(/^POZOR: nižší než minule\.\s*/, '').trim();
+  note = (note + ' ' + how + ': ' + who + ' ' + nowText_() + (old !== '' && old !== null ? ' (bylo ' + old + ')' : '') + (extraNote ? ' – ' + String(extraNote).slice(0, 120) : '')).trim().slice(0, 400);
+  sh.getRange(n, 4).setValue(value);
+  sh.getRange(n, 7).setValue(note);
+  if (how === 'AI znovu') sh.getRange(n, 9).setValue('AI (znovu)');
+  else if (!rec.r[8] || rec.r[8] === 'bez hodnoty') sh.getRange(n, 9).setValue('ručně');
+  sh.getRange(n, 12).setValue('');
+  sh.getRange(n, COL_EDIT).setValue(how + ': ' + who + ' ' + nowText_());
+  relink_(sh, meter.id);
+}
+
+function editReading_(body, P, who) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS); ensureReadingCols_(sh);
+    const rec = findReading_(sh, body.rid);
+    if (!rec) return { ok: false, error: 'nofile' };
+    if (rec.r[COL_OUT - 1]) return { ok: false, error: 'excluded' };
+    const auth = recordAuth_(P, who, rec, body);
+    if (!auth.ok) return auth;
+    const raw = String(body.value === undefined || body.value === null ? '' : body.value).replace(/\s/g, '').replace(',', '.');
+    const value = raw === '' ? NaN : round_(Number(raw), auth.meter.decimals);
+    if (!isFinite(value)) return { ok: false, error: 'data' };
+    applyValue_(sh, rec, auth.meter, value, who, auth.admin ? 'Upraveno správcem' : 'Upraveno', body.note);
+    return { ok: true, value: value };
+  } finally { lock.releaseLock(); }
+}
+
+// jen správce: označí záznam jako vyřazený (nebo ho vrátí, když restore = true)
+function excludeReading_(body, P, who) {
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS); ensureReadingCols_(sh);
+    const rec = findReading_(sh, body.rid);
+    if (!rec) return { ok: false, error: 'nofile' };
+    const meter = meters_().find(m => m.id === String(rec.r[1]));
+    if (!meter || !canEdit_(P, meter)) return { ok: false, error: 'forbidden' };
+    const chk = adminCheck_(body.pin); if (!chk.ok) return chk;
+    const range = sh.getRange(rec.n, 1, 1, COL_EDIT);
+    if (body.restore) { sh.getRange(rec.n, COL_OUT).setValue(''); range.setBackground(null); }
+    else { sh.getRange(rec.n, COL_OUT).setValue('VYŘAZENO · ' + who + ' · ' + nowText_() + (body.reason ? ' · ' + String(body.reason).slice(0, 120) : '')); range.setBackground('#fde2e1'); }
+    relink_(sh, meter.id);
+    return { ok: true };
+  } finally { lock.releaseLock(); }
+}
+
+// jen správce: znovu přečte hodnotu AI z uložené fotky záznamu
+function rereadReading_(body, P, who) {
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS); ensureReadingCols_(sh);
+  let rec = findReading_(sh, body.rid);
+  if (!rec) return { ok: false, error: 'nofile' };
+  if (rec.r[COL_OUT - 1]) return { ok: false, error: 'excluded' };
+  const meter = meters_().find(m => m.id === String(rec.r[1]));
+  if (!meter || !canEdit_(P, meter)) return { ok: false, error: 'forbidden' };
+  const chk = adminCheck_(body.pin); if (!chk.ok) return chk;
+  const fid = driveId_(rec.r[7]);
+  if (!fid) return { ok: false, error: 'nophoto' };
+  let bytes;
+  try { const f = DriveApp.getFileById(fid); if (f.getSize() > 15 * 1024 * 1024) return { ok: false, error: 'toobig' }; bytes = f.getBlob().getBytes(); } catch (e) { return { ok: false, error: 'nophoto' }; }
+  const ai = readWithAi_(meter, Utilities.base64Encode(bytes));
+  if (!ai.ok) return { ok: false, error: 'ai', detail: ai.detail || ai.error };
+  const lock = LockService.getScriptLock(); lock.waitLock(20000);
+  try {
+    rec = findReading_(sh, body.rid); // mezitím se mohl změnit
+    if (!rec) return { ok: false, error: 'nofile' };
+    const value = round_(Number(ai.value), meter.decimals);
+    applyValue_(sh, rec, meter, value, who, 'AI znovu', '');
+    return { ok: true, value: value };
+  } finally { lock.releaseLock(); }
+}
+
+// ---------- zámek měřidla (kdo právě fotí / zapisuje) ----------
+const lockKey_ = id => 'L:' + id;
+function meterLock_(body, who) {
+  const cache = CacheService.getScriptCache(), key = lockKey_(body.id);
+  let cur = null; try { cur = JSON.parse(cache.get(key) || 'null'); } catch (e) {}
+  if (body.release) { if (cur && cur.by === who) cache.remove(key); return { ok: true }; }
+  if (cur && cur.by !== who) return { ok: false, error: 'locked', by: cur.by };
+  cache.put(key, JSON.stringify({ by: who, t: Date.now() }), LOCK_TTL_S);
+  return { ok: true };
+}
+// kdo drží zámek u kterého měřidla (jen cizí zámky)
+function lockedMap_(ids, who) {
+  const out = {};
+  try {
+    const got = CacheService.getScriptCache().getAll(ids.map(lockKey_));
+    ids.forEach(id => { const v = got[lockKey_(id)]; if (v) { const c = JSON.parse(v); if (c.by !== who) out[id] = c.by; } });
+  } catch (e) {}
+  return out;
+}

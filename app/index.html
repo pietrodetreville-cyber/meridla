@@ -61,6 +61,11 @@ img.shot{width:100%;border-radius:10px;display:block}
 .sep{border:0;border-top:1px solid var(--line);margin:14px 0 10px}
 #bflog{margin-top:8px;line-height:1.5}
 .linkbtn{display:block;margin:12px auto 0;background:transparent;color:var(--mut);padding:8px 12px;font-weight:500;font-size:.85rem}
+#edov{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
+#edov.hide{display:none}
+#edov .card{width:100%;max-width:380px;margin:0}
+.pendbox{background:#c2312a14;border:1px solid #c2312a44;border-radius:10px;padding:8px 10px;margin:8px 0;font-size:.85rem}
+.pendbox a{color:var(--acc);text-decoration:none;font-weight:600}
 #pinov{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
 #pinov.hide{display:none}
 #pinov .card{width:100%;max-width:340px;margin:0}
@@ -227,7 +232,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
   <p class="note" id="homenote"></p>
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
   <div id="hadminpanel" class="card hide">
-    <div class="row" style="align-items:center"><b style="flex:1">Admin</b><button class="sec" id="aclose" type="button" style="flex:none">Zavřít admin</button></div>
+    <div class="row" style="align-items:center"><b style="flex:1">Admin</b><button class="sec" id="aclose" type="button" style="flex:none">Zavřít</button><button class="sec" id="alock" type="button" style="flex:none">Zamknout</button></div>
     <div id="archsec">
     <div class="note" style="margin:4px 0 8px">Vyfoť papírový arch. Fotka se jen uloží na Disk (složka Papírové záznamy). Čtení hodnot AI a zápis uděláš později v tabulce přes okno Import z papíru.</div>
     <div class="row"><button class="sec" id="acamb" type="button">📷 Vyfotit arch</button><button class="sec" id="afileb" type="button">🖼️ Z galerie</button></div>
@@ -268,7 +273,9 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
     <div class="mhead"><span class="ico" id="micon"></span><div><strong id="mname"></strong><div class="note" id="msub"></div></div></div>
     <div class="note" id="mlast" style="margin:10px 0"></div>
     <div class="callout hide" id="mplace"></div>
-    <div class="row"><button id="mshot" type="button">📷 Vyfotit měřidlo</button><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
+    <div class="note warn hide" id="mlock"></div>
+    <div class="row"><button id="mshot" type="button">📷 Vyfotit měřidlo</button><button class="sec" id="mwrite" type="button">✍️ Zapsat hodnotu</button></div>
+    <div class="row"><button class="sec" id="mback" type="button">Zpět na seznam</button></div>
   </div>
 </section>
 
@@ -306,6 +313,15 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
   <div id="bar"><button class="sec" id="vfclose" type="button">Zpět</button><button class="sec" id="torch" type="button">💡 Baterka</button><button id="shot" type="button">Vyfotit</button></div>
 </div>
 <div id="lb" class="hide"><div id="lbstat"></div><img id="lbimg" alt="Fotka nebo plánek místa"></div>
+<div id="edov" class="hide"><div class="card">
+  <strong id="edtitle">Upravit záznam</strong>
+  <div class="note" id="edinfo" style="margin:4px 0 8px"></div>
+  <label for="edval">Stav měřidla</label><input id="edval" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 12345,6">
+  <label for="ednote">Poznámka (nepovinná)</label><input id="ednote" type="text" autocomplete="off">
+  <div class="note warn" id="edmsg" style="min-height:1.2em;margin-top:6px"></div>
+  <div class="row"><button id="edsave" type="button">Uložit</button><button class="sec" id="edcancel" type="button">Zrušit</button></div>
+  <div class="row hide" id="edadmin"><button class="sec" id="edai" type="button">🤖 AI znovu</button><button class="sec" id="edout" type="button">🚫 Vyřadit</button></div>
+</div></div>
 <div id="pinov" class="hide"><div class="card"><strong>Admin</strong><div class="note" style="margin:4px 0 10px">Zadej PIN admina.</div><input id="pininput" type="password" inputmode="numeric" autocomplete="off"><div class="warn" id="pinmsg" style="min-height:1.3em;margin:6px 0"></div><div class="row"><button class="sec" id="pincancel" type="button">Zrušit</button><button id="pingo" type="button">Odemknout</button></div></div></div>
 <div id="toast" class="hide"></div>
 <div id="yay" class="hide"><div class="tick">✓</div><b id="yaytext">Odesláno</b><span id="yaysub"></span></div>
@@ -319,7 +335,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.38.0';
+const VERSION = '1.39.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -475,7 +491,7 @@ function renderAll(noAnim) {
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) && !queuedIds.has(m.id) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
     '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + ((!building || bOf(m) !== building) && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + m.name.replace(/</g, '&lt;') + ' <span class="mid">– ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
-    (queuedIds.has(m.id) ? '<span class="s warn">⏳ čeká na odeslání (uloženo v telefonu)</span>' : '') + (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
+    (m.lockedBy ? '<span class="s warn">🔒 právě zapisuje ' + m.lockedBy.replace(/</g, '&lt;') + '</span>' : '') + (queuedIds.has(m.id) ? '<span class="s warn">⏳ čeká na odeslání (uloženo v telefonu)</span>' : '') + (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
 }
 async function loadList() {
   if (!ENDPOINT) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Testovací verze zatím není propojená s testovací tabulkou (chybí adresa testovacího skriptu). Ostrá data se nepoužívají.</span>'; return; }
@@ -580,9 +596,13 @@ function fillAdminMeters() {
 }
 $('amsel').onchange = amPick;
 function enterAdmin() { fillAdminMeters(); show('home'); document.body.classList.add('adminmode'); $('hadmin').textContent = '🔓'; $('hadminpanel').classList.remove('hide'); window.scrollTo(0, 0); }
-$('aclose').onclick = () => adminLock();
+function leaveAdmin() { document.body.classList.remove('adminmode'); $('hadminpanel').classList.add('hide'); paintAdmin(); }
+function paintAdmin() { if (adminPin && !adminOn()) { adminLock(); return; } $('hadmin').textContent = adminOn() ? '🔓' : '🔒'; }
+setInterval(paintAdmin, 30000);
+$('aclose').onclick = leaveAdmin;
+$('alock').onclick = () => adminLock();
 $('hadmin').onclick = () => {
-  if (adminOn()) { if (document.body.classList.contains('adminmode')) adminLock(); else enterAdmin(); return; }
+  if (adminOn()) { if (document.body.classList.contains('adminmode')) leaveAdmin(); else enterAdmin(); return; }
   $('pininput').value = ''; $('pinmsg').textContent = ''; $('pinov').classList.remove('hide'); setTimeout(() => $('pininput').focus(), 50);
 };
 // arch se zmenší na 2000 px na delší straně (aby šla číst ručně psaná čísla)
@@ -694,12 +714,12 @@ function show(name) {
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
-  if (!current || current.id !== m.id) adminLock();
   current = m;
   $('micon').textContent = iconFor(m); $('mname').textContent = m.name + ' · ' + idLabel(m);
   $('msub').textContent = [m.building ? bLabel(m.building) : '', m.place, m.typeName].filter(Boolean).join(' · ');
   $('mlast').textContent = lastInfo(m) + (m.last ? ' (stav ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ')' : '') + (editable(m) ? '' : ' · jen prohlížení');
-  $('mshot').classList.toggle('hide', !editable(m));
+  $('mshot').classList.toggle('hide', !editable(m)); $('mwrite').classList.toggle('hide', !editable(m));
+  $('mlock').textContent = m.lockedBy ? '🔒 Právě zapisuje ' + m.lockedBy + '. Zkus to za chvíli.' : ''; $('mlock').classList.toggle('hide', !m.lockedBy);
   // box s popisem místa: když je k měřidlu fotka / plánek, je celý tlačítkem, které ji otevře
   const pl = $('mplace'); pl.textContent = '';
   if (m.placeHelp || m.placePhoto) {
@@ -712,8 +732,22 @@ function openMeter(m) {
   show('meter');
   hist.readings = null; loadHist().catch(() => {});
 }
-$('mshot').onclick = () => openCamera();
-$('mback').onclick = () => { adminLock(); show('home'); };
+// ---- zámek měřidla: kdo fotí / zapisuje, pro ostatní je měřidlo blokované (zámek sám vyprší za 10 minut)
+let lockedId = null, lockTimer = null, lockBusy = false;
+async function acquireLock(m) {
+  if (navigator.onLine === false) return true; // offline se nic nezamyká
+  try {
+    const r = await post({ token: token(), action: 'lock', id: m.id });
+    if (r.ok) { lockedId = m.id; clearInterval(lockTimer); lockTimer = setInterval(() => { if (lockedId) post({ token: token(), action: 'lock', id: lockedId }).catch(() => {}); }, 120000); return true; }
+    if (r.error === 'locked') { m.lockedBy = r.by; toast('Měřidlo právě zapisuje ' + r.by + '. Zkus to za chvíli.', 5000); return false; }
+    if (r.error === 'forbidden') { toast('K tomuto měřidlu nemáš oprávnění zapisovat.', 5000); return false; }
+  } catch (e) {}
+  return true;
+}
+function releaseLock() { clearInterval(lockTimer); if (!lockedId) return; const id = lockedId; lockedId = null; post({ token: token(), action: 'lock', id: id, release: true }).catch(() => {}); }
+$('mshot').onclick = async () => { if (lockBusy) return; lockBusy = true; const ok = await acquireLock(current); lockBusy = false; if (ok) openCamera(); else openMeter(current); };
+$('mwrite').onclick = async () => { if (lockBusy) return; lockBusy = true; const ok = await acquireLock(current); lockBusy = false; if (ok) openDetail(''); else openMeter(current); };
+$('mback').onclick = () => { releaseLock(); show('home'); };
 
 // ================= detail měření: týden / měsíc / rok =================
 let hist = { id: null, readings: null, range: 'all', offset: 0, note: '' };
@@ -782,13 +816,62 @@ async function loadHist() {
     try {
       const r = await api('?token=' + encodeURIComponent(token()) + '&action=history&id=' + encodeURIComponent(current.id));
       if (!r.ok) throw new Error(r.error || 'chyba');
-      hist = { id: current.id, range: hist.range, offset: 0, note: '', readings: r.readings.map(x => ({ t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', pid: x.pid || '' })), prices: (r.prices || []).map(q => ({ from: Number(q.from), price: Number(q.price) })) };
+      hist = { id: current.id, range: hist.range, offset: 0, note: '', me: r.me || '', pending: (r.pending || []).map(x => ({ rid: x.rid, t: new Date(x.time), who: x.who, pid: x.pid || '' })), readings: r.readings.map(x => ({ rid: x.rid, t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', pid: x.pid || '' })), prices: (r.prices || []).map(q => ({ from: Number(q.from), price: Number(q.price) })) };
       autoOffset();
     } catch (e) { body.innerHTML = '<p class="note warn">Detail se nepodařilo načíst' + (e instanceof TypeError ? ' (bez připojení)' : '') + '.</p>'; return; }
   }
   renderHist();
 }
 const fmtD = x => fmtNum(Math.round(x * 100) / 100);
+// záznam smí upravit autor do 24 hodin, odemčený admin kdykoli
+const ownRec = x => x.who === hist.me && Date.now() - x.t.getTime() <= 864e5;
+const canEditRec = x => editable(current) && (ownRec(x) || adminOn());
+let edRec = null;
+const recById = rid => (hist.readings || []).find(x => x.rid === rid) || (hist.pending || []).find(x => x.rid === rid) || null;
+function openEditor(rid) {
+  const x = recById(rid); if (!x) return; edRec = x;
+  const has = x.v !== undefined && isFinite(x.v), adm = adminOn();
+  $('edtitle').textContent = (has ? 'Upravit záznam' : 'Doplnit hodnotu') + ' · ' + fmtDT(x.t);
+  $('edval').value = has ? String(x.v).replace('.', ',') : ''; $('ednote').value = '';
+  $('edinfo').textContent = adm && !ownRec(x) ? 'Jako admin můžeš záznam upravit kdykoli.' : 'Svůj záznam můžeš upravit do 24 hodin od odečtu.';
+  $('edadmin').classList.toggle('hide', !adm); $('edai').classList.toggle('hide', !(adm && x.pid));
+  $('edmsg').textContent = ''; $('edov').classList.remove('hide'); setTimeout(() => $('edval').focus(), 50);
+}
+function editError(r) {
+  if (r.error === 'pin' || r.error === 'locked' || r.error === 'nopin') { if (r.error !== 'nopin') adminLock(); return adminError(r.error); }
+  return r.error === 'expired' ? 'Uplynulo 24 hodin, úpravu může udělat správce.' : r.error === 'forbidden' ? 'K tomuto záznamu nemáš oprávnění.' : r.error === 'data' ? 'Zadej stav jako číslo.' :
+    r.error === 'ai' ? 'AI hodnotu nepřečetla' + (r.detail ? ': ' + String(r.detail).slice(0, 160) : '.') : r.error === 'nophoto' ? 'K záznamu není uložená fotka.' : r.error === 'excluded' ? 'Záznam je vyřazený.' : r.error === 'toobig' ? 'Fotka je příliš velká.' : r.error === 'nofile' ? 'Záznam nebyl nalezen.' : 'Uložení se nepovedlo. Zkus to prosím znovu.';
+}
+async function edCall(body, okMsg) {
+  if (navigator.onLine === false) return ($('edmsg').textContent = 'Bez připojení. Úpravu jde provést jen online.');
+  const btns = ['edsave', 'edai', 'edout', 'edcancel']; btns.forEach(i => $(i).disabled = true);
+  $('edmsg').innerHTML = '<span class="spin sm"></span>Ukládám…';
+  try {
+    const r = await post(Object.assign({ token: token() }, body));
+    if (r.ok) {
+      if (adminOn()) adminUntil = Date.now() + 10 * 60 * 1000;
+      $('edov').classList.add('hide'); toast(okMsg(r), 4500);
+      const id = current.id; hist.readings = null; loadHist();
+      loadList().then(() => { current = meters.find(m => m.id === id) || current; });
+    } else $('edmsg').textContent = editError(r);
+  } catch (e) { $('edmsg').textContent = 'Bez připojení nebo chyba serveru.'; }
+  finally { btns.forEach(i => $(i).disabled = false); }
+}
+$('hbody').addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[data-edit]'); if (!a) return; e.preventDefault(); openEditor(a.dataset.edit); });
+$('edcancel').onclick = () => $('edov').classList.add('hide');
+$('edsave').onclick = () => {
+  const x = edRec; if (!x) return;
+  const raw = $('edval').value.trim(), v = roundTo(parseNum(raw), decOf(current));
+  if (raw === '' || !isFinite(v)) return ($('edmsg').textContent = 'Zadej stav jako číslo.');
+  edCall({ action: 'editReading', rid: x.rid, value: v, note: $('ednote').value.trim(), pin: ownRec(x) ? undefined : adminPin }, () => 'Upraveno ✓');
+};
+$('edai').onclick = () => { if (edRec) edCall({ action: 'rereadAi', rid: edRec.rid, pin: adminPin }, r => 'AI přečetla: ' + fmtNum(r.value) + ' ✓'); };
+$('edout').onclick = () => {
+  if (!edRec) return;
+  const why = prompt('Záznam se vyřadí (v tabulce zůstane označený). Důvod (nepovinný):', '');
+  if (why === null) return;
+  edCall({ action: 'excludeReading', rid: edRec.rid, pin: adminPin, reason: why }, () => 'Záznam vyřazen ✓');
+};
 // doba mezi dvěma odečty srozumitelně (minuty, hodiny, dny a hodiny)
 const fmtDur = ms => { const hh = ms / 36e5; if (hh < 1) return Math.max(1, Math.round(ms / 6e4)) + ' min'; if (hh < 48) return Math.round(hh) + ' h'; const d = Math.floor(hh / 24), r = Math.round(hh - d * 24); return d + ' d' + (r ? ' ' + r + ' h' : ''); };
 function renderHist() {
@@ -854,6 +937,7 @@ function renderHist() {
     chart += '<g id="hsg"><line id="hsl" y1="' + T + '" y2="' + (H - B) + '" stroke="var(--acc)" stroke-width="1" stroke-dasharray="3 3" opacity=".55"/><circle id="hsr" r="9" fill="var(--acc)" opacity=".18" class="hpulse"/><circle id="hsc" r="4.6" fill="var(--pop)" stroke="var(--acc)" stroke-width="2.4"/></g>';
   }
   // každý záznam má vlastní průměr podle času od předchozího odečtu; první záznam průměr nemá
+  const pendHtml = (hist.pending || []).length && editable(current) ? '<div class="pendbox">⏳ Čeká na hodnotu:' + hist.pending.map(x => '<div>' + fmtDT(x.t) + (x.who ? ' · ' + x.who.replace(/</g, '&lt;') : '') + (x.pid ? ' · <a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="fotka">📷 fotka</a>' : '') + (canEditRec(x) ? ' · <a href="#" data-edit="' + String(x.rid).replace(/[^\w-]/g, '') + '">✎ doplnit</a>' : '') + '</div>').join('') + '</div>' : '';
   const rows = idx.slice().reverse().map(i => {
     const x = rs[i]; let l1, l2 = '', neg = false;
     if (i === 0) l1 = 'první odečet, bez průměru';
@@ -865,7 +949,7 @@ function renderHist() {
     // zdroj záznamu: z archu (papír), z fotky měřidla, přečtené AI, nebo jen ručně; u fotky je odkaz na ni
     const sr = /papír/.test(x.src) ? (x.pid ? '📄 z archu' : '📄 z papíru') : /AI/.test(x.src) ? (x.pid ? '📷 z fotky, četla AI' : '🤖 přečetla AI') : x.pid ? '📷 z fotky' : (x.src && x.src !== 'ručně' ? x.src : '✍️ zadáno ručně');
     const srh = x.pid ? '<a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="' + sr.replace(/[<"]/g, '') + '">' + sr.replace(/</g, '&lt;') + '</a>' : sr.replace(/</g, '&lt;');
-    return '<div class="hrow' + (neg ? ' neg' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '<br><span class="src">' + srh + '</span></span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
+    return '<div class="hrow' + (neg ? ' neg' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '<br><span class="src">' + srh + (canEditRec(x) ? ' · <a href="#" data-edit="' + String(x.rid).replace(/[^\w-]/g, '') + '">✎ upravit</a>' : '') + '</span></span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
   }).join('');
   $('hbody').innerHTML =
     '<div class="tiles"><div><b>' + fmtD(total) + ' ' + unit + '</b><span>spotřeba</span></div><div><b>' + (avgDay === null ? '–' : fmtD(avgDay) + ' ' + unit) + '</b><span>průměr za den</span></div><div><b>' + idx.length + '</b><span>odečtů</span></div></div>' +
@@ -873,6 +957,7 @@ function renderHist() {
     (pts.length ? '<div class="hselbox"><b id="hselv"></b><span id="hseld"></span></div><svg id="hsvg" viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="Průměrná denní spotřeba">' + chart + '</svg>' : '<p class="note">Na graf jsou potřeba aspoň dva odečty.</p>') +
     '<p class="note" style="margin:4px 0 0">Průměrná denní spotřeba. Klepni na graf pro hodnotu.</p>' +
     (resets ? '<p class="note warn">V období je ' + resets + ' odečet s nižším stavem než předtím. Do spotřeby se nezapočítal.</p>' : '') +
+    pendHtml +
     (idx.length ? '<div style="margin-top:6px">' + rows + '</div>' : '<p class="note">V tomto období není žádný odečet.</p>');
   if (pts.length) {
     const svg = $('hsvg'), fdd = t => { const d = new Date(t); return d.getDate() + '. ' + (d.getMonth() + 1) + '.'; };
@@ -917,7 +1002,7 @@ async function openCamera() {
     setTimeout(checkDark, 1200);
   } catch (e) { if (my === camSeq) { closeVf(); toast('Foťák se nepodařilo spustit. Povol ho v prohlížeči.'); } }
 }
-$('vfclose').onclick = closeVf;
+$('vfclose').onclick = () => { closeVf(); if ($('detail').classList.contains('hide')) releaseLock(); };
 let torchOK = false, torchErr = '';
 const trackCaps = tr => { try { return (tr.getCapabilities && tr.getCapabilities()) || {}; } catch (e) { return {}; } };
 const camInfo = tr => { try { return (tr.label || 'kamera') + ' [' + Object.keys(trackCaps(tr)).join(',') + ']'; } catch (e) { return 'kamera'; } };
@@ -983,45 +1068,85 @@ $('shot').onclick = () => {
 
 // ================= po vyfocení: AI přečte stav =================
 async function afterShot(cv) {
-  photoB64 = cv.toDataURL('image/jpeg', 0.8).split(',')[1];
+  const keep = !$('detail').classList.contains('hide') ? [$('dval').value, $('dnote').value] : null; // doplnění fotky k rozepsanému záznamu
+  openDetail(cv.toDataURL('image/jpeg', 0.8).split(',')[1]);
+  if (keep) { $('dval').value = keep[0]; $('dnote').value = keep[1]; }
+}
+let source = 'ručně', aiValue = null, aiFailed = false, busySend = false;
+// photo = fotka (base64), nebo '' = zápis hodnoty bez fotky
+function openDetail(photo) {
+  photoB64 = photo || '';
   show('detail');
   $('dname').textContent = current.name;
   $('dlast').textContent = current.last ? lastInfo(current) + ' (stav ' + fmtNum(current.last.value) + ' ' + (current.unit || '') + ')' : 'Zatím bez předchozího odečtu';
-  $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide');
+  if (photoB64) { $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide'); } else { $('dimg').removeAttribute('src'); $('dimg').classList.add('hide'); }
   $('dval').value = ''; $('dnote').value = ''; source = 'ručně'; aiValue = null; aiFailed = false;
   $('dlabel').textContent = 'Stav měřidla · ' + decText(decOf(current));
-  $('dstatus').textContent = 'Zadej stav z měřidla, nebo nech prázdné: hodnotu přečte AI z fotky na pozadí.';
-  $('dsend').textContent = 'Odeslat';
+  $('dretake').textContent = photoB64 ? 'Vyfotit znovu' : '📷 Přidat fotku';
+  paintSendMode();
 }
-let source = 'ručně', aiValue = null, aiFailed = false;
+function paintSendMode() {
+  if ($('detail').classList.contains('hide') || busySend) return;
+  const on = navigator.onLine !== false;
+  $('dsend').textContent = on ? 'Odeslat' : 'Uložit (odešle se samo)';
+  $('dstatus').textContent = !photoB64 ? 'Zapiš stav z měřidla. Fotku můžeš přidat tlačítkem níže.' : on ? 'Zadej stav z měřidla, nebo nech prázdné: po odeslání ho přečte AI z fotky.' : 'Jsi offline. Záznam se uloží v telefonu a sám se odešle, až bude signál. Prázdný stav přečte AI po odeslání.';
+}
+window.addEventListener('online', paintSendMode); window.addEventListener('offline', paintSendMode);
 $('dretake').onclick = () => openCamera();
-function backHome() { show('home'); loadList(); }
+function backHome() { releaseLock(); show('home'); loadList(); }
 $('dback').onclick = backHome;
+const newClientId = () => (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).slice(0, 20);
 
-// záznam se hned uloží v telefonu (IndexedDB) a odešle se na pozadí; bez signálu čeká, až se objeví
+// offline (nebo selhalo odeslání): záznam se uloží v telefonu (IndexedDB) a odešle se na pozadí, až je signál
 async function enqueueSend(body, okMsg) {
-  body.clientId = (Date.now().toString(36) + Math.random().toString(36).slice(2, 8)).slice(0, 20); body.takenAt = new Date().toISOString();
+  if (!body.clientId) body.clientId = newClientId();
+  if (!body.takenAt) body.takenAt = new Date().toISOString();
   try { await idbAdd(body); } catch (e) { return toast('Záznam se nepodařilo uložit do telefonu.', 6000); }
   await showQueue(); backHome();
-  if (okMsg === 'yay') yay(); else toast(okMsg, 4500);
+  if (okMsg === 'yay') yay(); else toast(okMsg, 5500);
   flushQueue();
 }
 $('dsend').onclick = () => {
+  if (busySend) return;
   const raw = $('dval').value.trim(), has = raw !== '';
   const value = has ? roundTo(parseNum(raw), decOf(current)) : null;
   if (has && !isFinite(value)) return toast('Stav zadej jako číslo, nebo nech pole prázdné.');
+  if (!has && !photoB64) return toast('Zapiš stav měřidla, nebo přidej fotku.');
   if (has && current.last && value < current.last.value && !confirm('Zadaný stav (' + fmtNum(value) + ') je nižší než minule (' + fmtNum(current.last.value) + '). Opravdu odeslat?')) return;
   const body = { token: token(), id: current.id, note: $('dnote').value.trim(), photo: photoB64 };
   if (has) { body.value = value; body.source = 'ručně'; } else { body.noValue = true; body.aiRead = true; body.source = 'AI na pozadí'; }
-  enqueueSend(body, has ? 'yay' : 'Fotka uložena. Hodnotu přečte AI na pozadí.');
+  body.clientId = newClientId(); body.takenAt = new Date().toISOString();
+  if (navigator.onLine === false) return enqueueSend(body, 'Uloženo v telefonu. Odešle se samo, až bude signál.');
+  directSend(body, has);
 };
-function yay() {
+// online: odešle se hned a čeká se na výsledek (AI přečte hodnotu z fotky přímo na serveru)
+async function directSend(body, has) {
+  busySend = true; ['dsend', 'dretake', 'dback'].forEach(i => $(i).disabled = true);
+  $('dstatus').innerHTML = '<span class="spin sm"></span>' + (has ? 'Odesílám…' : 'Odesílám fotku, AI čte hodnotu… (může trvat až půl minuty)');
+  let r = null;
+  try { r = await post(body); } catch (e) { r = null; }
+  busySend = false; ['dsend', 'dretake', 'dback'].forEach(i => $(i).disabled = false);
+  const queueIt = () => enqueueSend(body, 'Odeslání se nepovedlo. Záznam je uložený v telefonu a odešle se sám.');
+  if (!r) return queueIt();
+  if (!r.ok) {
+    if (r.error === 'forbidden') { toast('K tomuto měřidlu nemáš oprávnění zapisovat.', 6000); return paintSendMode(); }
+    if (r.error === 'token' || r.error === 'data') { toast('Záznam se nepodařilo odeslat (neplatný odkaz nebo data).', 6000); return paintSendMode(); }
+    return queueIt();
+  }
+  releaseLock();
+  const id = current.id;
+  if (r.pendingValue) toast('Fotka je uložená, ale AI hodnotu nepřečetla. Doplň ji ručně (✎ upravit) nebo ji doplní výbor.', 9000);
+  else if (r.dup) toast('Tenhle záznam už byl zapsán.');
+  else yay('Zapsáno: ' + fmtNum(r.value) + ' ' + (current.unit || '') + (r.source === 'AI na pozadí' ? ' (přečetla AI)' : '') + (r.warn ? ' · pozor, nižší než minule' : ''));
+  await loadList(); current = meters.find(m => m.id === id) || current; openMeter(current);
+}
+function yay(sub) {
   const who = (lsGet('meridla.who') || '').split(' ')[0];
   $('yaytext').textContent = who ? 'Díky, ' + who + '!' : 'Odesláno, díky!';
-  $('yaysub').textContent = 'Stav je zapsaný a fotka uložená.';
+  $('yaysub').textContent = sub || 'Stav je zapsaný a fotka uložená.';
   $('yay').classList.remove('hide');
   try { navigator.vibrate && navigator.vibrate(40); } catch (e) {}
-  setTimeout(() => $('yay').classList.add('hide'), 1500);
+  setTimeout(() => $('yay').classList.add('hide'), sub ? 2600 : 1500);
 }
 $('yay').onclick = () => $('yay').classList.add('hide');
 

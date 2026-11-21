@@ -1,6 +1,7 @@
 **/*
 !Code.gs
 !Import.gs
+!Records.gs
 !appsscript.json
 
 !ImportUi.html

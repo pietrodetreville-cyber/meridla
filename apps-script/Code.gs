@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.33.0';
+const SCRIPT_VERSION = '1.34.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -275,9 +275,9 @@ function meters_() {
   });
 }
 
-function readings_() {
+function readings_(withOut) {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
-  return v.slice(1).map((r, i) => ({ r: r, row: i + 2 })).filter(o => o.r[0]).map(o => {
+  return v.slice(1).map((r, i) => ({ r: r, row: i + 2 })).filter(o => o.r[0] && (withOut || !o.r[13])).map(o => {
     const r = o.r, has = r[3] !== '' && r[3] !== null && isFinite(Number(r[3]));
     return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row, src: String(r[8] || ''), photo: String(r[7] || '') };
   });
@@ -314,7 +314,8 @@ function doGet(e) {
     const hm = meters_().find(m => m.id === e.parameter.id);
     if (!hm || !canSee_(P, hm)) return ok_({ ok: false, error: 'forbidden' });
     const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
-    return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), prices: pricesFor_((meters_().find(m => m.id === e.parameter.id) || {}).typeName) });
+    const pend = readings_().filter(x => x.id === e.parameter.id && !x.has).sort((a, b) => a.time - b.time).slice(-20);
+    return ok_({ ok: true, me: who, readings: rows.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), pending: pend.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })), prices: pricesFor_((meters_().find(m => m.id === e.parameter.id) || {}).typeName) });
   }
   if (e.parameter.action === 'rphoto') return ok_(recordImage_(e.parameter.f, P));
   if (e.parameter.action === 'place') {
@@ -323,12 +324,13 @@ function doGet(e) {
   }
   fillIds_();
   const all = readings_();
+  const locks = lockedMap_(meters_().map(m => m.id), who);
   const list = meters_().filter(m => canSee_(P, m)).map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
     const lastAny = mine[0], lastVal = mine.find(x => x.has);
     // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
     const di = dueInfo_(m, lastVal);
-    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m) };
+    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
   });
   return ok_({ ok: true, who: who, edit: P.edit, editAll: P.editAll, meters: list });
 }
@@ -395,6 +397,10 @@ function doPost(e) {
   const mine = id => { const mm = meters_().find(m => m.id === id); return !mm || canEdit_(P, mm); };
   if (['read', 'adminCheck', 'placeUpload', 'backfill'].indexOf(body.action) >= 0 && (!P.edit || !mine(body.id))) return denied();
   if (body.action === 'paperUpload' && !P.editAll) return denied(); // arch se týká všech budov
+  if (body.action === 'lock') return P.edit && mine(body.id) ? ok_(meterLock_(body, who)) : denied();
+  if (body.action === 'editReading') return P.edit ? ok_(editReading_(body, P, who)) : denied();
+  if (body.action === 'excludeReading') return P.edit ? ok_(excludeReading_(body, P, who)) : denied();
+  if (body.action === 'rereadAi') return P.edit ? ok_(rereadReading_(body, P, who)) : denied();
   if (body.action === 'read') return ok_(readWithAi_(meters_().find(m => m.id === body.id), body.photo));
   if (body.action === 'adminCheck') return ok_(adminCheck_(body.pin));
   if (body.action === 'placeUpload') return ok_(placeUpload_(body));
@@ -443,7 +449,7 @@ function doPost(e) {
 
     if (noValue) {
       try { sendMissingMail_(meter, who, rid, blob, aiFailed); } catch (mailErr) { Logger.log('E-mail o chybějící hodnotě se nepodařilo odeslat: ' + mailErr.message); }
-      return ok_({ ok: true, pendingValue: true });
+      return ok_({ ok: true, pendingValue: true, rid: rid, aiFailed: aiFailed });
     }
     const to = props_().getProperty('NOTIFY');
     if (to && !mailsPaused_()) {
@@ -452,7 +458,7 @@ function doPost(e) {
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }
-    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value });
+    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value, rid: rid, source: source });
   } finally {
     lock.releaseLock();
   }
@@ -544,6 +550,7 @@ function submitValue(rid, key, value, name) {
     const i = data.findIndex((r, k) => k > 0 && String(r[12]) === rid);
     if (i < 0) throw new Error('Záznam nebyl nalezen.');
     const row = data[i];
+    if (row[13]) throw new Error('Záznam byl vyřazen.');
     if (row[3] !== '' && row[3] !== null) throw new Error('Hodnota už je zapsaná.');
     const mm = meters_().find(m => m.id === String(row[1]));
     v = round_(v, mm ? mm.decimals : 1);
