@@ -317,7 +317,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.36.0';
+const VERSION = '1.37.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -375,7 +375,7 @@ async function flushQueue() {
       try {
         const r = await post(it.val);
         if (r.ok) { await idbDel(it.key); sent++; if (r.warn) toast('Odesláno, ale hodnota je nižší než minule.', 5000); else if (r.pendingValue) toast('Hodnotu z fotky se nepodařilo přečíst. Výbor dostane e-mail a doplní ji.', 6000); }
-        else if (r.error === 'token' || r.error === 'data') { await idbDel(it.key); toast('Jeden záznam se nepodařilo odeslat (neplatný odkaz nebo data).', 6000); }
+        else if (r.error === 'token' || r.error === 'data' || r.error === 'forbidden') { await idbDel(it.key); toast(r.error === 'forbidden' ? 'Záznam se nezapsal: k tomuto měřidlu nemáš oprávnění zapisovat.' : 'Jeden záznam se nepodařilo odeslat (neplatný odkaz nebo data).', 6000); }
         else break;
       } catch (e) { break; }
     }
@@ -388,7 +388,9 @@ window.addEventListener('online', () => { showQueue(); flushQueue(); });
 window.addEventListener('offline', showQueue);
 
 // ================= seznam měřidel =================
-let meters = [], current = null;
+let meters = [], current = null, canEdit = lsGet('meridla.edit') !== '0';
+// kdo smí jen prohlížet, nevidí focení ani admin
+function applyEdit() { $('mshot').classList.toggle('hide', !canEdit); $('hadmin').classList.toggle('hide', !canEdit); if (!canEdit) $('homenote').textContent = 'Máš oprávnění jen prohlížet. Odečty zapisovat nemůžeš.'; }
 const iconFor = m => { if (m.icon) return m.icon; const n = ((m.typeName || '') + ' ' + m.name + ' ' + (m.unit || '')).toLowerCase(); return /elektr|kwh/.test(n) ? '⚡' : /vod|m³/.test(n) && !/plyn/.test(n) ? '💧' : /plyn/.test(n) ? '🔥' : /tepl|kalor|gj|mwh/.test(n) ? '🌡️' : '📟'; };
 const isDue = m => m.due !== undefined ? m.due : !m.doneThisWeek;
 const plural = (n, a, b, c) => n === 1 ? a : n >= 2 && n <= 4 ? b : c;
@@ -479,12 +481,12 @@ async function loadList() {
   try {
     const r = await api('?token=' + encodeURIComponent(token()));
     if (!r.ok) { $('homenote').innerHTML = '<span class="warn">Odkaz není platný. Požádej o nový.</span>'; return; }
-    meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); lsSet('meridla.who', r.who || ''); showWho(); $('homenote').textContent = '';
+    meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); lsSet('meridla.who', r.who || ''); canEdit = r.edit !== false; lsSet('meridla.edit', canEdit ? '1' : '0'); showWho(); $('homenote').textContent = '';
   } catch (e) {
     try { meters = JSON.parse(lsGet('meridla.meters') || '[]'); } catch (e2) { meters = []; }
     $('homenote').textContent = meters.length ? 'Bez připojení: zobrazen poslední známý seznam.' : 'Nelze načíst seznam, zkontroluj připojení.';
   }
-  renderAll();
+  applyEdit(); renderAll();
 }
 $('reload').onclick = loadList;
 $('hrefresh').onclick = async () => { const b = $('hrefresh'); b.classList.add('spin'); try { await flushQueue(); await loadList(); } finally { setTimeout(() => b.classList.remove('spin'), 400); } };

@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.31.0';
+const SCRIPT_VERSION = '1.32.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -88,7 +88,7 @@ function setup() {
   let p = ss.getSheetByName(SHEET_PEOPLE);
   if (!p) {
     p = ss.insertSheet(SHEET_PEOPLE);
-    p.appendRow(['Jméno', 'Tajný kód (negenerovat ručně)', 'Odkaz pro tuto osobu']);
+    p.appendRow(['Jméno', 'Tajný kód (negenerovat ručně)', 'Odkaz pro tuto osobu', 'Budovy', 'Oprávnění']);
     p.setFrozenRows(1);
   }
   if (!r.getRange(1, 10).getValue()) r.getRange(1, 10).setValue('Kdo');
@@ -142,15 +142,28 @@ function envTag_() { return PropertiesService.getScriptProperties().getProperty(
 function props_() { return PropertiesService.getScriptProperties(); }
 // Vrací jméno člověka podle tajného kódu, nebo '' když kód neplatí.
 // Hlavní kód (vlastnost TOKEN) patří "Správci", ostatní kódy jsou v listu Lidé.
-function who_(t) {
-  if (!t) return '';
+// ---------- lidé a jejich oprávnění ----------
+// list Lidé: Jméno | Tajný kód | Odkaz | Budovy (např. "271, 273"; prázdné = všechny) | Oprávnění ("vidět" nebo "editovat"; prázdné = editovat)
+// Kotelna patří pod budovu 271 (stejně jako v aplikaci), takže kdo má 271, vidí i Kotelnu.
+function normKey_(v) { return String(v === undefined || v === null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
+function person_(t) {
+  if (!t) return null;
   const master = props_().getProperty('TOKEN');
-  if (master && t === master) return 'Správce';
+  if (master && t === master) return { name: 'Správce', buildings: null, edit: true };
   const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PEOPLE);
-  if (!sh || sh.getLastRow() < 2) return '';
-  const rows = sh.getRange(2, 1, sh.getLastRow() - 1, 2).getValues();
-  const hit = rows.find(r => String(r[0]).trim() && r[1] && String(r[1]) === t);
-  return hit ? String(hit[0]).trim() : '';
+  if (!sh || sh.getLastRow() < 2) return null;
+  const v = sh.getRange(1, 1, sh.getLastRow(), 5).getValues();
+  if (!v[0][3]) sh.getRange(1, 4).setValue('Budovy');
+  if (!v[0][4]) sh.getRange(1, 5).setValue('Oprávnění');
+  const hit = v.slice(1).find(r => String(r[0]).trim() && r[1] && String(r[1]) === t);
+  if (!hit) return null;
+  const list = String(hit[3] || '').split(/[,;\n]+/).map(normKey_).filter(Boolean);
+  return { name: String(hit[0]).trim(), buildings: list.length ? list : null, edit: !/^(vid|jen|cten|read|view|pouze)/.test(normKey_(hit[4])) };
+}
+function who_(t) { const p = person_(t); return p ? p.name : ''; }
+function canSee_(p, m) {
+  if (!p || !p.buildings) return true;
+  return p.buildings.indexOf(normKey_(m.building)) >= 0 || (!!m.parent && p.buildings.indexOf(normKey_(m.parent)) >= 0);
 }
 
 // přečte list jako tabulku podle názvů sloupců (pořadí sloupců není důležité)
@@ -289,27 +302,29 @@ function weekStart_() {
 function doGet(e) {
   if (e.parameter.action === 'version') return ok_({ ok: true, version: SCRIPT_VERSION, env: props_().getProperty('ENV') === 'test' ? 'test' : 'prod' });
   if (e.parameter.action === 'form') return formPage_(e.parameter.rid, e.parameter.key);
-  const who = who_(e.parameter.token);
+  const P = person_(e.parameter.token), who = P ? P.name : '';
   if (!who) return ok_({ ok: false, error: 'token' });
   if (e.parameter.action === 'history') {
+    const hm = meters_().find(m => m.id === e.parameter.id);
+    if (!hm || !canSee_(P, hm)) return ok_({ ok: false, error: 'forbidden' });
     const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
     return ok_({ ok: true, readings: rows.map(x => ({ time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), prices: pricesFor_((meters_().find(m => m.id === e.parameter.id) || {}).typeName) });
   }
-  if (e.parameter.action === 'rphoto') return ok_(recordImage_(e.parameter.f));
+  if (e.parameter.action === 'rphoto') return ok_(recordImage_(e.parameter.f, P));
   if (e.parameter.action === 'place') {
     const mm = meters_().find(x => x.id === e.parameter.id);
-    return ok_(mm && mm.placePhoto ? placeImage_(mm.placePhoto) : { ok: false, error: 'none' });
+    return ok_(mm && mm.placePhoto && canSee_(P, mm) ? placeImage_(mm.placePhoto) : { ok: false, error: 'none' });
   }
   fillIds_();
   const all = readings_();
-  const list = meters_().map(m => {
+  const list = meters_().filter(m => canSee_(P, m)).map(m => {
     const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
     const lastAny = mine[0], lastVal = mine.find(x => x.has);
     // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
     const di = dueInfo_(m, lastVal);
     return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due };
   });
-  return ok_({ ok: true, who: who, meters: list });
+  return ok_({ ok: true, who: who, edit: P.edit, meters: list });
 }
 
 // Spusť jednou z editoru: vyvolá povolení externího připojení a ověří klíč Gemini.
@@ -367,8 +382,12 @@ function readWithAi_(meter, b64) {
 function doPost(e) {
   let body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return ok_({ ok: false, error: 'json' }); }
-  const who = who_(body.token);
+  const P = person_(body.token), who = P ? P.name : '';
   if (!who) return ok_({ ok: false, error: 'token' });
+  // kdo smí jen prohlížet, nic nezapisuje; ostatní vidí a zapisují jen měřidla svých budov
+  const denied = () => ok_({ ok: false, error: 'forbidden' });
+  const mine = id => { const mm = meters_().find(m => m.id === id); return !mm || canSee_(P, mm); };
+  if (['read', 'adminCheck', 'placeUpload', 'backfill', 'paperUpload'].indexOf(body.action) >= 0 && (!P.edit || !mine(body.id))) return denied();
   if (body.action === 'read') return ok_(readWithAi_(meters_().find(m => m.id === body.id), body.photo));
   if (body.action === 'adminCheck') return ok_(adminCheck_(body.pin));
   if (body.action === 'placeUpload') return ok_(placeUpload_(body));
@@ -376,6 +395,7 @@ function doPost(e) {
   if (body.action === 'paperUpload') return ok_(paperUpload_(body));
 
   const meter = meters_().find(m => m.id === body.id);
+  if (!P.edit || (meter && !canSee_(P, meter))) return denied();
   let noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
   let value = noValue ? NaN : (meter ? round_(Number(String(body.value).replace(',', '.')), meter.decimals) : Number(String(body.value).replace(',', '.')));
   if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo)) return ok_({ ok: false, error: 'data' });
@@ -666,14 +686,17 @@ function driveId_(url) {
 }
 // fotka k záznamu (arch nebo fotka měřidla) se čte přes skript, takže ji uvidí každý, kdo má aplikaci, bez oprávnění k Disku.
 // Povolené jsou jen soubory, které jsou uvedené v listu Odečty.
-function recordImage_(fid) {
+function recordImage_(fid, P) {
   try {
     fid = String(fid || '');
     if (!/^[\w-]{20,}$/.test(fid)) return { ok: false, error: 'nofile' };
     const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS), n = sh.getLastRow() - 1;
     if (n < 1) return { ok: false, error: 'nofile' };
-    const col = sh.getRange(2, 8, n, 1).getValues();
-    if (!col.some(r => String(r[0]).indexOf(fid) >= 0)) return { ok: false, error: 'nofile' };
+    const col = sh.getRange(2, 1, n, 8).getValues();
+    const row = col.find(r => String(r[7]).indexOf(fid) >= 0);
+    if (!row) return { ok: false, error: 'nofile' };
+    const mm = meters_().find(m => m.id === String(row[1]));
+    if (P && mm && !canSee_(P, mm)) return { ok: false, error: 'nofile' };
     const r = UrlFetchApp.fetch('https://drive.google.com/thumbnail?id=' + fid + '&sz=w1600', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });
     let blob = null;
     if (r.getResponseCode() === 200) blob = r.getBlob();
