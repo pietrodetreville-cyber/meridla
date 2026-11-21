@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.36.0';
+const SCRIPT_VERSION = '1.37.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -242,9 +242,9 @@ let MEMO_ON_ = false, METERS_MEMO_ = null, MISSING_IDS_ = false;
 const CACHE_TTL = { meters: 180, sum: 300, hist: 600, prices: 300 };
 function cacheGetJson_(k) { try { const v = CacheService.getScriptCache().get(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
 function cachePutJson_(k, obj, ttl) { try { const t = JSON.stringify(obj); if (t.length < 90000) CacheService.getScriptCache().put(k, t, ttl); } catch (e) {} }
-function bustCache_(meterId) { try { CacheService.getScriptCache().removeAll(['SUM', 'H:' + meterId]); } catch (e) {} }
+function bustCache_(meterId) { try { CacheService.getScriptCache().removeAll(['SUM2', 'H:' + meterId]); } catch (e) {} }
 function bustMeters_() { try { CacheService.getScriptCache().remove('METERS'); } catch (e) {} METERS_MEMO_ = null; }
-function bustAll_() { try { const ids = metersRead_().map(m => m.id); CacheService.getScriptCache().removeAll(['SUM', 'METERS'].concat(ids.map(i => 'H:' + i))); } catch (e) {} METERS_MEMO_ = null; }
+function bustAll_() { try { const ids = metersRead_().map(m => m.id); CacheService.getScriptCache().removeAll(['SUM2', 'METERS'].concat(ids.map(i => 'H:' + i))); } catch (e) {} METERS_MEMO_ = null; }
 function meters_() {
   if (MEMO_ON_ && METERS_MEMO_) return METERS_MEMO_;
   let r = MEMO_ON_ ? cacheGetJson_('METERS') : null;
@@ -257,14 +257,14 @@ function meters_() {
 }
 // poslední hodnota a stav "čeká na hodnotu" každého měřidla (z listu Odečty se čte jen při prázdné mezipaměti)
 function summary_() {
-  const c = cacheGetJson_('SUM'); if (c) return c;
+  const c = cacheGetJson_('SUM2'); if (c) return c;
   const by = {};
   readings_().sort((a, b) => a.time - b.time).forEach(x => {
-    const s = by[x.id] || (by[x.id] = { v: null, t: null, w: '', p: false });
+    const s = by[x.id] || (by[x.id] = { v: null, t: null, w: '', p: false, sv: null, st: null });
     s.p = !x.has;
-    if (x.has) { s.v = x.value; s.t = x.time.toISOString(); s.w = x.who; }
+    if (x.has) { s.v = x.value; s.t = x.time.toISOString(); s.w = x.who; if (x.sup) { s.sv = x.value; s.st = s.t; } }
   });
-  cachePutJson_('SUM', by, CACHE_TTL.sum);
+  cachePutJson_('SUM2', by, CACHE_TTL.sum);
   return by;
 }
 function metersRead_() {
@@ -274,6 +274,10 @@ function metersRead_() {
   const mt = table_(SHEET_METERS);
   const num = x => Number(x) > 0 ? Math.round(Number(x)) : 0;
   const seen = {}, B = buildings_();
+  // sloupec "Dodavatel (plomba)" se při prvním čtení doplní do hlavičky listu Měřidla (ano = pod plombou dodavatele, prázdné = interní měřidlo)
+  if (mt.sheet && !Object.keys((mt.rows[0] || { v: {} }).v).some(k => /^(dodavatel|plomb)/.test(k)) && mt.sheet.getLastColumn() > 0) {
+    try { mt.sheet.getRange(1, mt.sheet.getLastColumn() + 1).setValue('Dodavatel (plomba)'); } catch (e) {}
+  }
   MISSING_IDS_ = mt.rows.some(r => !String(r.v['id'] || '').trim() && (String(r.v['název'] || '').trim() || String(r.v['typ'] || '').trim()));
   return mt.rows.filter(r => String(r.v['id'] || '').trim()).map(r => {
     const v = r.v, typeName = String(v['typ'] || '').trim(), t = types[typeName.toLowerCase()] || {};
@@ -303,6 +307,7 @@ function metersRead_() {
       shootHelp: fk ? String(v[fk] || '').trim() : '',
       placePhoto: (() => { const k = findKey_(v, /^(fotka|plánek|plan)[_ ]?(místa|mista)?/); return k ? String(v[k] || '').trim() : ''; })(),
       decimals: dec,
+      supplier: (() => { const k = findKey_(v, /^(dodavatel|plomb)/); return k ? /^(ano|a|1|x|true|yes)$/i.test(String(v[k] === undefined || v[k] === null ? '' : v[k]).trim()) : false; })(),
       icon: String(t['ikona'] || '').trim(),
       interval: num(v['interval (dny)'] || v['interval']) || num(t['výchozí interval (dny)']) || 7
     };
@@ -313,7 +318,7 @@ function readings_(withOut) {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
   return v.slice(1).map((r, i) => ({ r: r, row: i + 2 })).filter(o => o.r[0] && (withOut || !o.r[13])).map(o => {
     const r = o.r, has = r[3] !== '' && r[3] !== null && isFinite(Number(r[3]));
-    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row, src: String(r[8] || ''), photo: String(r[7] || '') };
+    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row, src: String(r[8] || ''), photo: String(r[7] || ''), sup: String(r[15] || '') !== '' };
   });
 }
 
@@ -351,7 +356,7 @@ function doGet(e) {
     let hd = cacheGetJson_('H:' + hm.id);
     if (!hd) {
       const mine = readings_().filter(x => x.id === hm.id).sort((a, b) => a.time - b.time);
-      hd = { r: mine.filter(x => x.has).slice(-800).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), p: mine.filter(x => !x.has).slice(-20).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })) };
+      hd = { r: mine.filter(x => x.has).slice(-800).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, sup: x.sup, pid: driveId_(x.photo) })), p: mine.filter(x => !x.has).slice(-20).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })) };
       cachePutJson_('H:' + hm.id, hd, CACHE_TTL.hist);
     }
     let pr = cacheGetJson_('PR:' + hm.typeName);
@@ -371,7 +376,7 @@ function doGet(e) {
     const sx = sm[m.id], lastVal = sx && sx.t ? { value: sx.v, time: new Date(sx.t), who: sx.w } : null;
     // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
     const di = dueInfo_(m, lastVal);
-    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!sx && sx.p, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
+    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!sx && sx.p, lastSup: sx && sx.st ? { value: sx.sv, time: sx.st } : null, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
   });
   return ok_({ ok: true, ms: Date.now() - T0, who: who, edit: P.edit, editAll: P.editAll, meters: list });
 }
@@ -451,6 +456,8 @@ function doPost(e) {
 
   const meter = meters_().find(m => m.id === body.id);
   if (!P.edit || (meter && !canEdit_(P, meter))) return denied();
+  if (body.supplier === true && (!meter || !meter.supplier)) return ok_({ ok: false, error: 'nosupplier' });
+  const sup = body.supplier === true;
   let noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
   let value = noValue ? NaN : (meter ? round_(Number(String(body.value).replace(',', '.')), meter.decimals) : Number(String(body.value).replace(',', '.')));
   if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo)) return ok_({ ok: false, error: 'data' });
@@ -488,7 +495,8 @@ function doPost(e) {
     // sloupce: Čas, id, Měřidlo, Stav, Předchozí, Přírůstek, Poznámka, Fotka, Zdroj, Kdo, Budova, Chyba, ID záznamu
     const err = noValue ? 'Hodnota nezapsána' + (aiFailed ? ' (OCR ji nepřečetlo)' : '') : '';
     sheet.appendRow([when, meter.id, meter.name, noValue ? '' : value, (!noValue && prev) ? prev.value : '', diff, note, fileUrl,
-      noValue ? 'bez hodnoty' : source, who, meter.building, err, rid]);
+      noValue ? 'bez hodnoty' : source, who, meter.building, err, rid, '', '', sup ? 'ANO' : '']);
+    if (sup) { ensureReadingCols_(sheet); sheet.getRange(sheet.getLastRow(), 1, 1, COL_SUP).setBackground(SUP_BG); }
     bustCache_(meter.id);
 
     if (noValue) {
@@ -497,12 +505,12 @@ function doPost(e) {
     }
     const to = props_().getProperty('NOTIFY');
     if (to && !mailsPaused_()) {
-      MailApp.sendEmail(to, envTag_() + 'Odečet: ' + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
+      MailApp.sendEmail(to, envTag_() + (sup ? 'Odečet DODAVATELE: ' : 'Odečet: ') + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
         (meter.buildingLabel ? 'Budova: ' + meter.buildingLabel + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }
-    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value, rid: rid, source: source });
+    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value, rid: rid, source: source, supplier: sup });
   } finally {
     lock.releaseLock();
   }
@@ -659,7 +667,7 @@ function placeUpload_(body) {
 // Zpětný záznam bez fotky (stavy z papírových záznamů). Jen správce s PINem.
 // Zapíše se k vybranému datu; předchozí stav a přírůstek se dopočítají podle času a upraví se i následující záznam.
 // Samotný zápis zpětného záznamu (volající drží zámek). Vrací { ok, diff, warn } nebo { ok: false, error: 'dup' }.
-function backfillCore_(meter, when, value, note, who, force, photoUrl) {
+function backfillCore_(meter, when, value, note, who, force, photoUrl, supplier) {
   const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS);
   const all = readings_().filter(x => x.id === meter.id && x.has).sort((x, y) => x.time - y.time);
   if (!force && all.some(x => dayNum_(x.time) === dayNum_(when) && x.value === value)) return { ok: false, error: 'dup' };
@@ -670,7 +678,8 @@ function backfillCore_(meter, when, value, note, who, force, photoUrl) {
   if (prev && value < prev.value) n = ('POZOR: nižší než předchozí záznam. ' + n).trim();
   n = (n + ' Zpětně doplněno správcem.').trim();
   const rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
-  sheet.appendRow([when, meter.id, meter.name, value, prev ? prev.value : '', diff, n, photoUrl || '', 'doplněno zpětně (papír)', who, meter.building, '', rid]);
+  sheet.appendRow([when, meter.id, meter.name, value, prev ? prev.value : '', diff, n, photoUrl || '', 'doplněno zpětně (papír)', who, meter.building, '', rid, '', '', supplier && meter.supplier ? 'ANO' : '']);
+  if (supplier && meter.supplier) { ensureReadingCols_(sheet); sheet.getRange(sheet.getLastRow(), 1, 1, COL_SUP).setBackground(SUP_BG); }
   // následující záznam má nový předchozí stav
   if (next && next.row) { sheet.getRange(next.row, 5).setValue(value); sheet.getRange(next.row, 6).setValue(Math.round((next.value - value) * 1000) / 1000); }
   bustCache_(meter.id);
@@ -692,7 +701,7 @@ function backfill_(body, who) {
   const lock = LockService.getScriptLock();
   lock.waitLock(20000);
   try {
-    return backfillCore_(meter, when, value, body.note, who, !!body.force);
+    return backfillCore_(meter, when, value, body.note, who, !!body.force, '', body.supplier === true);
   } finally {
     lock.releaseLock();
   }

@@ -7,13 +7,14 @@
 
 const EDIT_WINDOW_MS = 24 * 3600 * 1000;
 const LOCK_TTL_S = 600;
-const COL_OUT = 14, COL_EDIT = 15;
+const COL_OUT = 14, COL_EDIT = 15, COL_SUP = 16, SUP_BG = '#e3efff';
 
 function nowText_() { return Utilities.formatDate(new Date(), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'd. M. yyyy H:mm'); }
 
 function ensureReadingCols_(sh) {
   if (!sh.getRange(1, COL_OUT).getValue()) sh.getRange(1, COL_OUT).setValue('Vyřazeno');
   if (!sh.getRange(1, COL_EDIT).getValue()) sh.getRange(1, COL_EDIT).setValue('Upraveno');
+  if (!sh.getRange(1, COL_SUP).getValue()) sh.getRange(1, COL_SUP).setValue('Odečet dodavatele');
 }
 
 // záznam podle ID záznamu; starší záznamy bez ID se hledají podle čísla řádku ("row-12")
@@ -77,7 +78,13 @@ function editReading_(body, P, who) {
     const raw = String(body.value === undefined || body.value === null ? '' : body.value).replace(/\s/g, '').replace(',', '.');
     const value = raw === '' ? NaN : round_(Number(raw), auth.meter.decimals);
     if (!isFinite(value)) return { ok: false, error: 'data' };
+    if (typeof body.supplier === 'boolean' && body.supplier && !auth.meter.supplier) return { ok: false, error: 'nosupplier' };
     applyValue_(sh, rec, auth.meter, value, who, auth.admin ? 'Upraveno správcem' : 'Upraveno', body.note);
+    if (typeof body.supplier === 'boolean') {
+      sh.getRange(rec.n, COL_SUP).setValue(body.supplier ? 'ANO' : '');
+      sh.getRange(rec.n, 1, 1, COL_SUP).setBackground(body.supplier ? SUP_BG : null);
+      bustCache_(auth.meter.id);
+    }
     return { ok: true, value: value };
   } finally { lock.releaseLock(); }
 }
