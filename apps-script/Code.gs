@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.38.0';
+const SCRIPT_VERSION = '1.39.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -108,17 +108,19 @@ function setup() {
   Logger.log('Složka s fotkami: ' + DriveApp.getFolderById(props.getProperty('FOLDER_ID')).getUrl());
 }
 
-// sloupec "Dodavatel (plomba)" v listu Měřidla (ano = pod plombou dodavatele, prázdné = interní); založí se při otevření tabulky
+// sloupec "Dodavatel" v listu Měřidla (ano = pod plombou dodavatele, prázdné = interní); založí se při otevření tabulky
 function ensureSupplierCol_() {
   try {
     const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS);
     if (!sh || sh.getLastColumn() < 1) return;
     const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).normalize('NFC').trim().toLowerCase());
-    if (!head.some(h => /^(dodavatel|plomb)/.test(h))) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Dodavatel (plomba)'); bustMeters_(); }
+    const hi = head.findIndex(h => /^(dodavatel|plomb)/.test(h));
+    if (hi < 0) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Dodavatel'); bustMeters_(); }
+    else if (head[hi] !== 'dodavatel') { sh.getRange(1, hi + 1).setValue('Dodavatel'); bustMeters_(); } // starý název "Dodavatel (plomba)" -> "Dodavatel"
   } catch (e) {}
 }
 // podmíněné formátování listu Měřidla: zelený řádek = pod plombou dodavatele ("ano"), žlutý = interní (prázdné pole). Prázdné řádky bez id se nebarví.
-// Pravidla se ukládají podle písmena sloupce, po přesunu sloupce Dodavatel (plomba) stačí spustit menu Měřidla -> Obarvit měřidla znovu.
+// Pravidla se ukládají podle písmena sloupce, po přesunu sloupce Dodavatel stačí spustit menu Měřidla -> Obarvit měřidla znovu.
 function formatMeterRows_() {
   try {
     const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS);
@@ -305,7 +307,7 @@ function metersRead_() {
   const mt = table_(SHEET_METERS);
   const num = x => Number(x) > 0 ? Math.round(Number(x)) : 0;
   const seen = {}, B = buildings_();
-  // sloupec "Dodavatel (plomba)" se při prvním čtení doplní do hlavičky listu Měřidla (ano = pod plombou dodavatele, prázdné = interní měřidlo)
+  // sloupec "Dodavatel" se při prvním čtení doplní do hlavičky listu Měřidla (ano = pod plombou dodavatele, prázdné = interní měřidlo)
   if (mt.sheet && !Object.keys((mt.rows[0] || { v: {} }).v).some(k => /^(dodavatel|plomb)/.test(k))) ensureSupplierCol_();
   MISSING_IDS_ = mt.rows.some(r => !String(r.v['id'] || '').trim() && (String(r.v['název'] || '').trim() || String(r.v['typ'] || '').trim()));
   return mt.rows.filter(r => String(r.v['id'] || '').trim()).map(r => {
@@ -895,7 +897,18 @@ function checkMeters() {
   });
   Object.keys(rows).forEach(id => { if (rows[id].length > 1) problems.push('id "' + id + '" je víckrát (řádky ' + rows[id].join(', ') + '). Musí být jedinečné, jinak se slije historie.'); });
   const total = mt.rows.filter(r => String(r.v['id'] || '').trim()).length;
-  SpreadsheetApp.getUi().alert(problems.length ? 'Nalezeno ' + problems.length + ' problémů:\n\n' + problems.join('\n') : 'Všechna měřidla jsou v pořádku (' + total + ').');
+  const keys = Object.keys((mt.rows[0] || { v: {} }).v);
+  ['id', 'název', 'typ', 'budova'].forEach(k => { if (keys.indexOf(k) < 0) problems.push('v hlavičce chybí sloupec "' + k + '"'); });
+  const sk = keys.find(k => /^(dodavatel|plomb)/.test(k)), isYes = t => /^(ano|a|1|x|true|yes)$/i.test(String(t === undefined || t === null ? '' : t).trim());
+  let info = '';
+  if (!sk) problems.push('chybí sloupec Dodavatel (založí se při příštím otevření tabulky)');
+  else {
+    const ids = mt.rows.filter(r => String(r.v['id'] || '').trim()), yes = ids.filter(r => isYes(r.v[sk]));
+    const odd = ids.filter(r => String(r.v[sk] === undefined || r.v[sk] === null ? '' : r.v[sk]).trim() !== '' && !isYes(r.v[sk]));
+    odd.forEach(r => problems.push('řádek ' + r.row + ': ve sloupci Dodavatel je "' + r.v[sk] + '" (platí jen "ano", jinak nech prázdné)'));
+    info = '\n\nPod plombou dodavatele: ' + yes.length + ' z ' + ids.length + ' měřidel, interních: ' + (ids.length - yes.length - odd.length) + '.';
+  }
+  SpreadsheetApp.getUi().alert((problems.length ? 'Nalezeno ' + problems.length + ' problémů:\n\n' + problems.join('\n') : 'Všechna měřidla jsou v pořádku (' + total + ').') + info);
 }
 
 // ---------- upozornění e-mailem, když není dodržen interval ----------
