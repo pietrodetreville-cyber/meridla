@@ -1,5 +1,5 @@
 // Offline: appka se uloží do cache. Nová verze čeká na potvrzení v appce.
-const VERSION = '1.40.0';
+const VERSION = '1.40.1';
 // ostrá a testovací verze běží na stejném webu, mají proto oddělenou cache
 const PREFIX = self.location.pathname.indexOf('/test/') >= 0 ? 'fotoapp-test-v' : 'fotoapp-v';
 const CACHE = PREFIX + VERSION;

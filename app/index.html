@@ -150,7 +150,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 .sugg .si{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#66728220;font-size:1.1rem}
 .sugg .st{flex:1;min-width:0}.sugg .st b{display:block;font-size:.95rem}.sugg .st span{display:block;font-size:.78rem;color:var(--mut);font-weight:500}
 .noanim .meter{animation:none}
-.fbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 10px 4px;margin:0 0 10px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.fbox{background:linear-gradient(var(--gl2),var(--gl2)),var(--card);border:1px solid var(--glow1);border-radius:14px;padding:6px 10px 4px;margin:0 0 10px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .fbox.hide{display:none}
 .fbox .sfind{position:relative;top:auto;z-index:6;padding:0 0 4px;margin:0 0 4px;border-bottom:1px solid var(--line)}
 .fbox .sfield{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0 2px}
@@ -338,7 +338,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.40.0';
+const VERSION = '1.40.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
