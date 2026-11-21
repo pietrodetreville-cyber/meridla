@@ -151,10 +151,9 @@ html:has(#splash:not(.out)){overflow:hidden}
 .fbox .sfield{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0 2px}
 .fbox .sfield:focus-within{box-shadow:none}
 .fbar{margin:0}
-.fsum{display:none;font-size:.78rem;color:var(--mut);padding:0 4px 5px}
-.fbox.col .fsum{display:block}
+.fhead{display:flex;align-items:center;justify-content:space-between;gap:8px;width:100%;background:transparent;color:var(--fg);border:0;border-radius:8px;padding:4px 2px 6px;font-size:.9rem;font-weight:700;text-align:left}
+.fbox.col .fhead{padding-bottom:4px;font-weight:600;color:var(--mut);font-size:.84rem}
 .fbox.col .fbar{display:none}
-.fbox.col .sfind{border-bottom:0;margin-bottom:0;padding-bottom:2px}
 #fcol{font-size:.9rem}
 .fbar.hide{display:none}
 .frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:5px;padding:2px 0 5px}
@@ -217,11 +216,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
 <div class="hero" id="hero"><div class="hi" id="who"></div></div>
 <div class="fbox" id="fbox">
-<div class="sfind" id="sbar">
-  <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat měřidlo…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button><button id="fcol" type="button" aria-label="Sbalit filtry" title="Sbalit / rozbalit filtry">▴</button></div>
-  <div class="sugg hide" id="sugg"></div>
-</div>
-<div class="fsum" id="fsum"></div>
+<button type="button" class="fhead" id="fhead" aria-expanded="true"><span id="ftitle">Filtry</span><span id="fcol" aria-hidden="true">▴</span></button>
 <div class="fbar hide" id="fbar"></div>
 </div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong id="updtxt">Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
@@ -322,7 +317,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.35.0';
+const VERSION = '1.36.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -416,18 +411,15 @@ const hay = m => norm([m.name, idLabel(m), m.typeName, m.building ? 'budova ' + 
 const textMatch = m => { const t = norm(query).split(/\s+/).filter(Boolean); if (!t.length) return true; const x = hay(m); return t.every(w => x.includes(w)); };
 const inBuilding = () => building ? meters.filter(m => inB(m, building)) : meters;
 const typeOf = m => m.typeName || m.name || 'Ostatní';
-let typeF = '', onlyDue = false;
+let typeF = '', onlyDue = false, fSumText = 'Filtry';
 const visible = () => inBuilding().filter(m => (!typeF || typeOf(m) === typeF) && (!onlyDue || isDue(m))).filter(textMatch);
 const badgeN = list => list.filter(isDue).length;
-function setBuilding(b) { building = b || ''; lsSet('meridla.building', building); query = ''; $('q').value = ''; hideSugg(); renderAll(); }
+function setBuilding(b) { building = b || ''; lsSet('meridla.building', building); renderAll(); }
 function renderSearchBar() {
   const bs = buildingList();
   if (building && !bs.includes(building)) building = '';
-  $('sbar').classList.toggle('hide', !meters.length); $('fbox').classList.toggle('hide', !meters.length);
-  const pill = $('bpill');
-  pill.classList.add('hide'); pill.textContent = '';
+  $('fbox').classList.toggle('hide', !meters.length);
   renderChips();
-  $('qclear').classList.toggle('hide', !query);
 }
 // rychlé filtry: budova (jedna volba), K odečtu a druh měřidla
 function renderChips() {
@@ -451,10 +443,11 @@ function renderChips() {
   bar._types = types;
   const parts = []; if (building) parts.push(building); if (typeF) parts.push(typeF); if (onlyDue) parts.push('K odečtu');
   const n = visible().length;
-  $('fsum').textContent = 'Filtr: ' + (parts.length ? parts.join(' · ') : 'vše') + ' · ' + n + ' ' + plural(n, 'měřidlo', 'měřidla', 'měřidel');
+  fSumText = 'Filtr: ' + (parts.length ? parts.join(' · ') : 'vše') + ' · ' + n + ' ' + plural(n, 'měřidlo', 'měřidla', 'měřidel');
+  applyCol();
 }
-function applyCol() { const c = lsGet('meridla.fcol') === '1'; $('fbox').classList.toggle('col', c); $('fcol').textContent = c ? '▾' : '▴'; $('fcol').setAttribute('aria-label', c ? 'Rozbalit filtry' : 'Sbalit filtry'); }
-$('fcol').onclick = () => { lsSet('meridla.fcol', lsGet('meridla.fcol') === '1' ? '' : '1'); applyCol(); };
+function applyCol() { const c = lsGet('meridla.fcol') === '1'; $('fbox').classList.toggle('col', c); $('fcol').textContent = c ? '▾' : '▴'; $('ftitle').textContent = c ? fSumText : 'Filtry'; $('fhead').setAttribute('aria-expanded', c ? 'false' : 'true'); $('fhead').setAttribute('aria-label', c ? 'Rozbalit filtry' : 'Sbalit filtry'); }
+$('fhead').onclick = () => { lsSet('meridla.fcol', lsGet('meridla.fcol') === '1' ? '' : '1'); applyCol(); };
 applyCol();
 $('fbar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
@@ -462,31 +455,7 @@ $('fbar').addEventListener('click', e => {
   else if (b.dataset.fd !== undefined) { onlyDue = !onlyDue; renderAll(true); }
   else if (b.dataset.ft !== undefined) { const t = ($('fbar')._types || [])[Number(b.dataset.ft)]; typeF = t && typeF !== t.t ? t.t : ''; renderAll(true); }
 });
-function hideSugg() { $('sugg').classList.add('hide'); }
 function statusLine(m) { return m.pending ? 'fotka čeká na doplnění hodnoty' : isDue(m) ? (!m.last ? 'chybí odečet' : m.overdueDays ? 'po termínu ' + days(m.overdueDays) : 'je čas na odečet') : '✓ hotovo'; }
-function renderSugg() {
-  const box = $('sugg'), qn = norm(query).trim(), esc = s => String(s).replace(/</g, '&lt;');
-  const bs = buildingList().filter(x => !qn || qn.split(/\s+/).every(w => norm('budova ' + x).includes(w)));
-  let ms = inBuilding().filter(textMatch).sort((x, y) => (isDue(y) - isDue(x)) || ((y.overdueDays || 0) - (x.overdueDays || 0)));
-  let html = '';
-  if (!building && bs.length > 1 || (!building && bs.length === 1 && qn)) html += '<h4>Budovy</h4>' + bs.map(x => { const l = meters.filter(m => inB(m, x)), n = badgeN(l), kids = bs.filter(y => parentOf(y) === x); return '<button data-b="' + esc(x).replace(/"/g, '') + '"><span class="si">🏢</span><span class="st"><b>' + esc(bLabel(x)) + '</b><span>' + l.length + ' ' + plural(l.length, 'měřidlo', 'měřidla', 'měřidel') + (kids.length ? ' (včetně: ' + esc(kids.join(', ').toLowerCase()) + ')' : '') + (n ? ' · k odečtu: ' + n : ' · vše hotovo') + '</span></span></button>'; }).join('');
-  if (!qn) ms = ms.filter(isDue);
-  if (ms.length) html += '<h4>' + (qn ? 'Měřidla' : 'K odečtu') + '</h4>' + ms.slice(0, 8).map(m => '<button data-m="' + esc(m.id) + '"><span class="si">' + iconFor(m) + '</span><span class="st"><b>' + (m.building ? esc(m.building) + ' · ' : '') + esc(m.name) + '</b><span>' + [m.place, statusLine(m)].filter(Boolean).map(esc).join(' · ') + '</span></span></button>').join('');
-  else if (qn) html += '<div class="none">Nic nenalezeno.</div>';
-  else if (!html) html += '<div class="none">Vše je hotovo 🎉</div>';
-  box.innerHTML = html; box.classList.toggle('hide', !html);
-}
-$('q').addEventListener('focus', () => { renderSugg(); });
-$('q').addEventListener('input', e => { query = e.target.value; renderSearchBar(); renderSugg(); renderAll(true); });
-$('qclear').onclick = () => { query = ''; $('q').value = ''; renderSearchBar(); renderSugg(); renderAll(true); $('q').focus(); };
-$('bpill').onclick = () => setBuilding('');
-$('sugg').addEventListener('click', e => {
-  const b = e.target.closest('button'); if (!b) return;
-  if (b.dataset.m !== undefined) { current = meters.find(m => m.id === b.dataset.m); hideSugg(); $('q').blur(); if (current) openMeter(current); }
-  else if (b.dataset.b !== undefined) { setBuilding(b.dataset.b); }
-});
-document.addEventListener('pointerdown', e => { if (!e.target.closest('#sbar')) hideSugg(); });
-$('q').addEventListener('keydown', e => { if (e.key === 'Escape') { hideSugg(); $('q').blur(); } });
 function chipFor(m) {
   if (m.pending) return '<span class="chip todo">čeká na hodnotu</span>';
   if (!isDue(m)) return '<span class="chip ok">✓ hotovo</span>';
@@ -716,7 +685,7 @@ $('pupload').onclick = async () => {
 // ================= obrazovky =================
 function show(name) {
   ['home', 'meter', 'hist', 'detail'].forEach(n => $(n).classList.toggle('hide', !(n === name || (name === 'meter' && n === 'hist'))));
-  $('hero').style.display = name === 'home' ? '' : 'none'; $('fbox').style.display = name === 'home' ? '' : 'none'; hideSugg();
+  $('hero').style.display = name === 'home' ? '' : 'none'; $('fbox').style.display = name === 'home' ? '' : 'none';
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
