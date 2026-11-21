@@ -172,6 +172,9 @@ html:has(#splash:not(.out)){overflow:hidden}
 .chip.late{background:var(--warn);color:#fff}
 .hero{position:relative;border-radius:14px;padding:10px 14px 11px;margin:6px 0 12px;color:var(--fg);background:var(--card);border:1px solid var(--line);border-left:4px solid var(--acc);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
 .hero{background:none;border:0;border-left:0;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0 4px;margin:4px 0 10px}
+.adminbar{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:6px;background:#ffd54a2e;border:1px solid #e0a800;border-radius:10px;padding:4px 6px 4px 10px;font-size:.84rem;font-weight:700}
+.adminbar.hide{display:none}
+.adminbar button{padding:4px 10px;font-size:.8rem;border-radius:8px;background:transparent;color:var(--fg);border:1px solid #e0a800}
 .hero .hi{font-size:1.05rem;font-weight:700;color:var(--fg)}
 .hero .big{font-size:1.02rem;font-weight:800;margin:1px 0 7px}
 .bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
@@ -219,7 +222,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
 <div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
-<div class="hero" id="hero"><div class="hi" id="who"></div></div>
+<div class="hero" id="hero"><div class="hi" id="who"></div><div class="adminbar hide" id="adminbar"><span>🔓 Režim admin je otevřený</span><button type="button" id="adminclose">Zavřít ✕</button></div></div>
 <div class="fbox" id="fbox">
 <button type="button" class="fhead" id="fhead" aria-expanded="true"><span id="ftitle">Filtry</span><span id="fcol" aria-hidden="true">▴</span></button>
 <div class="fbar hide" id="fbar"></div>
@@ -335,7 +338,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.39.0';
+const VERSION = '1.40.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -567,7 +570,7 @@ $('mplace').onclick = () => { if (current && current.placePhoto) showPlace(curre
 // ================= správce: nahrání fotky místa (PIN) =================
 let adminPin = null, adminUntil = 0, pendingPlace = '', pendingArch = '', am = null;
 const adminOn = () => adminPin && Date.now() < adminUntil;
-function adminLock() { document.body.classList.remove('adminmode'); $('hadmin').textContent = '🔒'; adminPin = null; adminUntil = 0; pendingPlace = ''; pendingArch = ''; $('hadminpanel').classList.add('hide'); $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; $('aresult').textContent = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; am = null; $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
+function adminLock() { document.body.classList.remove('adminmode'); $('hadmin').textContent = '🔒'; $('adminbar').classList.add('hide'); adminPin = null; adminUntil = 0; pendingPlace = ''; pendingArch = ''; $('hadminpanel').classList.add('hide'); $('apreview').classList.add('hide'); $('aupload').classList.add('hide'); $('acancel').classList.add('hide'); $('astat').textContent = ''; $('aresult').textContent = ''; bfLog = []; $('bflog').textContent = ''; $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; am = null; $('ppreview').classList.add('hide'); $('pupload').classList.add('hide'); $('pcancel').classList.add('hide'); $('pstat').textContent = ''; }
 function adminError(code) {
   return code === 'pin' ? 'Špatný PIN.' : code === 'locked' ? 'Příliš mnoho pokusů. Zkus to za 10 minut.' : code === 'nopin' ? 'PIN správce není ve skriptu nastaven (vlastnost ADMIN_PIN).' : code === 'drive' ? 'Fotku se nepodařilo uložit na Disk.' : code === 'nofolder' ? 'Chybí složka na fotky míst (spusť setup).' : 'Nahrání se nepovedlo. Zkus to prosím znovu.';
 }
@@ -595,9 +598,10 @@ function fillAdminMeters() {
   s.value = keep; amPick();
 }
 $('amsel').onchange = amPick;
-function enterAdmin() { fillAdminMeters(); show('home'); document.body.classList.add('adminmode'); $('hadmin').textContent = '🔓'; $('hadminpanel').classList.remove('hide'); window.scrollTo(0, 0); }
+function enterAdmin() { fillAdminMeters(); $('adminbar').classList.remove('hide'); show('home'); document.body.classList.add('adminmode'); $('hadmin').textContent = '🔓'; $('hadminpanel').classList.remove('hide'); window.scrollTo(0, 0); }
 function leaveAdmin() { document.body.classList.remove('adminmode'); $('hadminpanel').classList.add('hide'); paintAdmin(); }
-function paintAdmin() { if (adminPin && !adminOn()) { adminLock(); return; } $('hadmin').textContent = adminOn() ? '🔓' : '🔒'; }
+function paintAdmin() { if (adminPin && !adminOn()) { adminLock(); return; } $('hadmin').textContent = adminOn() ? '🔓' : '🔒'; $('adminbar').classList.toggle('hide', !adminOn()); }
+$('adminclose').onclick = () => adminLock();
 setInterval(paintAdmin, 30000);
 $('aclose').onclick = leaveAdmin;
 $('alock').onclick = () => adminLock();
