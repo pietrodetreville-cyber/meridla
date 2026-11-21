@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.39.0';
+const SCRIPT_VERSION = '1.40.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -349,7 +349,7 @@ function readings_(withOut) {
   const v = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS).getDataRange().getValues();
   return v.slice(1).map((r, i) => ({ r: r, row: i + 2 })).filter(o => o.r[0] && (withOut || !o.r[13])).map(o => {
     const r = o.r, has = r[3] !== '' && r[3] !== null && isFinite(Number(r[3]));
-    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row, src: String(r[8] || ''), photo: String(r[7] || ''), sup: String(r[15] || '') !== '' };
+    return { time: new Date(r[0]), id: String(r[1]), value: has ? Number(r[3]) : NaN, has: has, who: String(r[9] || ''), rid: String(r[12] || ''), row: o.row, src: String(r[8] || ''), photo: String(r[7] || ''), sup: String(r[15] || '') !== '', ent: r[16] ? new Date(r[16]) : null };
   });
 }
 
@@ -387,7 +387,7 @@ function doGet(e) {
     let hd = cacheGetJson_('H:' + hm.id);
     if (!hd) {
       const mine = readings_().filter(x => x.id === hm.id).sort((a, b) => a.time - b.time);
-      hd = { r: mine.filter(x => x.has).slice(-800).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, sup: x.sup, pid: driveId_(x.photo) })), p: mine.filter(x => !x.has).slice(-20).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })) };
+      hd = { r: mine.filter(x => x.has).slice(-800).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, sup: x.sup, ent: x.ent && !isNaN(x.ent) ? x.ent.toISOString() : '', pid: driveId_(x.photo) })), p: mine.filter(x => !x.has).slice(-20).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })) };
       cachePutJson_('H:' + hm.id, hd, CACHE_TTL.hist);
     }
     let pr = cacheGetJson_('PR:' + hm.typeName);
@@ -491,7 +491,7 @@ function doPost(e) {
   const sup = body.supplier === true;
   let noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
   let value = noValue ? NaN : (meter ? round_(Number(String(body.value).replace(',', '.')), meter.decimals) : Number(String(body.value).replace(',', '.')));
-  if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo)) return ok_({ ok: false, error: 'data' });
+  if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo) || (sup && noValue)) return ok_({ ok: false, error: 'data' });
   let source = body.source || '', aiFailed = !!body.aiFailed, aiNote = '';
   // hodnota nebyla zadána a appka chce přečtení na pozadí: přečte ji AI z fotky (mimo zámek, trvá chvíli)
   if (noValue && body.aiRead === true) {
@@ -502,6 +502,12 @@ function doPost(e) {
   // čas pořízení z telefonu (záznam pořízený offline se nezapíše až časem odeslání); nesmí být v budoucnu ani starší než 60 dní
   let when = new Date();
   if (body.takenAt) { const t = new Date(body.takenAt); if (!isNaN(t) && t.getTime() <= Date.now() + 5 * 60000 && t.getTime() > Date.now() - 60 * 86400000) when = t; }
+  if (sup && /^\d{4}-\d{2}-\d{2}$/.test(String(body.readingDate || ''))) {
+    let d = null; try { d = Utilities.parseDate(body.readingDate + ' 12:00', SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm'); } catch (e) {}
+    if (!d || d.getFullYear() < 2000) return ok_({ ok: false, error: 'date' });
+    if (d.getTime() > Date.now() + 36e5) return ok_({ ok: false, error: 'future' });
+    when = d;
+  }
   // stejný záznam se při opakovaném odeslání (např. ztracená odpověď) nezapíše dvakrát
   let rid = String(body.clientId || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 24);
   if (!rid) rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
@@ -526,8 +532,9 @@ function doPost(e) {
     // sloupce: Čas, id, Měřidlo, Stav, Předchozí, Přírůstek, Poznámka, Fotka, Zdroj, Kdo, Budova, Chyba, ID záznamu
     const err = noValue ? 'Hodnota nezapsána' + (aiFailed ? ' (OCR ji nepřečetlo)' : '') : '';
     sheet.appendRow([when, meter.id, meter.name, noValue ? '' : value, (!noValue && prev) ? prev.value : '', diff, note, fileUrl,
-      noValue ? 'bez hodnoty' : source, who, meter.building, err, rid, '', '', sup ? 'ANO' : '']);
+      noValue ? 'bez hodnoty' : source, who, meter.building, err, rid, '', '', sup ? 'ANO' : '', sup ? new Date() : '']);
     if (sup) { ensureReadingCols_(sheet); sheet.getRange(sheet.getLastRow(), 1, 1, COL_SUP).setBackground(SUP_BG); }
+    if (sup && when.getTime() < Date.now() - 36e5) relink_(sheet, meter.id);
     bustCache_(meter.id);
 
     if (noValue) {
@@ -541,7 +548,7 @@ function doPost(e) {
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
         (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
     }
-    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value, rid: rid, source: source, supplier: sup });
+    return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value, rid: rid, source: source, supplier: sup, when: when.toISOString() });
   } finally {
     lock.releaseLock();
   }

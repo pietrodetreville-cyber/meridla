@@ -7,7 +7,7 @@
 
 const EDIT_WINDOW_MS = 24 * 3600 * 1000;
 const LOCK_TTL_S = 600;
-const COL_OUT = 14, COL_EDIT = 15, COL_SUP = 16, SUP_BG = '#e3efff';
+const COL_OUT = 14, COL_EDIT = 15, COL_SUP = 16, COL_ENTRY = 17, SUP_BG = '#e3efff';
 
 function nowText_() { return Utilities.formatDate(new Date(), SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'd. M. yyyy H:mm'); }
 
@@ -15,6 +15,7 @@ function ensureReadingCols_(sh) {
   if (!sh.getRange(1, COL_OUT).getValue()) sh.getRange(1, COL_OUT).setValue('Vyřazeno');
   if (!sh.getRange(1, COL_EDIT).getValue()) sh.getRange(1, COL_EDIT).setValue('Upraveno');
   if (!sh.getRange(1, COL_SUP).getValue()) sh.getRange(1, COL_SUP).setValue('Odečet dodavatele');
+  if (!sh.getRange(1, COL_ENTRY).getValue()) sh.getRange(1, COL_ENTRY).setValue('Zapsáno');
 }
 
 // záznam podle ID záznamu; starší záznamy bez ID se hledají podle čísla řádku ("row-12")
@@ -45,7 +46,9 @@ function relink_(sh, meterId) {
 function recordAuth_(P, who, rec, body) {
   const meter = meters_().find(m => m.id === String(rec.r[1]));
   if (!meter || !canEdit_(P, meter)) return { ok: false, error: 'forbidden' };
-  const age = Date.now() - new Date(rec.r[0]).getTime();
+  // okno 24 h se počítá od času odečtu, u odečtu dodavatele (zadává se zpětným datem z faktury) od chvíle zadání
+  const entered = rec.r[COL_ENTRY - 1] ? new Date(rec.r[COL_ENTRY - 1]).getTime() : NaN;
+  const age = Date.now() - (isNaN(entered) ? new Date(rec.r[0]).getTime() : entered);
   if (String(rec.r[9]) === who && age <= EDIT_WINDOW_MS) return { ok: true, meter: meter, admin: false };
   if (!body.pin) return { ok: false, error: String(rec.r[9]) === who ? 'expired' : 'forbidden' };
   const chk = adminCheck_(body.pin);
@@ -79,7 +82,16 @@ function editReading_(body, P, who) {
     const value = raw === '' ? NaN : round_(Number(raw), auth.meter.decimals);
     if (!isFinite(value)) return { ok: false, error: 'data' };
     if (typeof body.supplier === 'boolean' && body.supplier && !auth.meter.supplier) return { ok: false, error: 'nosupplier' };
+    let newWhen = null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(String(body.when || ''))) {
+      const willBeSup = typeof body.supplier === 'boolean' ? body.supplier : String(rec.r[COL_SUP - 1] || '') !== '';
+      if (!willBeSup) return { ok: false, error: 'data' };
+      try { newWhen = Utilities.parseDate(body.when + ' 12:00', SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm'); } catch (e) {}
+      if (!newWhen || newWhen.getFullYear() < 2000) return { ok: false, error: 'date' };
+      if (newWhen.getTime() > Date.now() + 36e5) return { ok: false, error: 'future' };
+    }
     applyValue_(sh, rec, auth.meter, value, who, auth.admin ? 'Upraveno správcem' : 'Upraveno', body.note);
+    if (newWhen) { sh.getRange(rec.n, 1).setValue(newWhen); relink_(sh, auth.meter.id); bustCache_(auth.meter.id); }
     if (typeof body.supplier === 'boolean') {
       sh.getRange(rec.n, COL_SUP).setValue(body.supplier ? 'ANO' : '');
       sh.getRange(rec.n, 1, 1, COL_SUP).setBackground(body.supplier ? SUP_BG : null);

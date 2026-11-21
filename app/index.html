@@ -314,6 +314,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
     <label for="dnote">Poznámka (nepovinná)</label>
     <input id="dnote" type="text" autocomplete="off">
     <label id="dsupwrap" class="ckrow hide"><input id="dsup" type="checkbox"> 🏷️ Odečet dodavatele (měřidlo pod plombou)</label>
+    <div id="dsupdate" class="hide"><label for="dwhen">Datum odečtu dodavatele (ke dni platí, např. z faktury)</label><input id="dwhen" type="date"></div>
     <div class="row"><button class="sec" id="dretake" type="button">Vyfotit znovu</button><button id="dsend" type="button">Odeslat</button></div>
         <div class="row"><button class="sec" id="dback" type="button">Zpět na seznam</button></div>
   </div>
@@ -337,6 +338,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
   <label for="edval">Stav měřidla</label><input id="edval" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 12345,6">
   <label for="ednote">Poznámka (nepovinná)</label><input id="ednote" type="text" autocomplete="off">
   <label id="edsupwrap" class="ckrow hide"><input id="edsup" type="checkbox"> 🏷️ Odečet dodavatele</label>
+  <div id="edwhenwrap" class="hide"><label for="edwhen">Datum odečtu</label><input id="edwhen" type="date"></div>
   <div class="note warn" id="edmsg" style="min-height:1.2em;margin-top:6px"></div>
   <div class="row"><button id="edsave" type="button">Uložit</button><button class="sec" id="edcancel" type="button">Zrušit</button></div>
   <div class="row hide" id="edadmin"><button class="sec" id="edai" type="button">🤖 AI znovu</button><button class="sec" id="edout" type="button">🚫 Vyřadit</button></div>
@@ -354,7 +356,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.44.0';
+const VERSION = '1.45.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -367,6 +369,9 @@ const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} 
 const token = () => lsGet('meridla.token') || '';
 
 const fmtDate = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '.'; };
+const pad2 = n => String(n).padStart(2, '0');
+const ymdOf = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const fmtDay = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear(); };
 const fmtDT = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '. v ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const lastInfo = m => m.last ? 'Naposledy: ' + fmtDT(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'Zatím nikdo nefotil';
 const idLabel = m => String(m.id).replace(/#\d+$/, '');
@@ -780,7 +785,7 @@ async function acquireLock(m) {
 function releaseLock() { clearInterval(lockTimer); if (!lockedId) return; const id = lockedId; lockedId = null; post({ token: token(), action: 'lock', id: id, release: true }).catch(() => {}); }
 $('mshot').onclick = async () => { if (lockBusy) return; lockBusy = true; const ok = await acquireLock(current); lockBusy = false; if (ok) openCamera(); else openMeter(current); };
 let pendingSup = false;
-$('msup').onclick = async () => { if (lockBusy) return; lockBusy = true; const ok = await acquireLock(current); lockBusy = false; if (ok) { pendingSup = true; openCamera(); } else openMeter(current); };
+$('msup').onclick = async () => { if (lockBusy) return; lockBusy = true; const ok = await acquireLock(current); lockBusy = false; if (ok) { pendingSup = true; openDetail(''); } else openMeter(current); };
 $('mwrite').onclick = async () => { if (lockBusy) return; lockBusy = true; const ok = await acquireLock(current); lockBusy = false; if (ok) openDetail(''); else openMeter(current); };
 $('mback').onclick = () => { releaseLock(); show('home'); };
 
@@ -860,7 +865,7 @@ function histCachePut(id, r) {
 function histCacheDrop(id) { delete histMem[id]; try { lsSet('meridla.h.' + id, ''); } catch (e) {} }
 function histFrom(id, r) {
   return { id: id, range: hist.range, offset: 0, note: '', me: r.me || '', pending: (r.pending || []).map(x => ({ rid: x.rid, t: new Date(x.time), who: x.who, pid: x.pid || '' })),
-    readings: r.readings.map(x => ({ rid: x.rid, t: new Date(x.time), v: Number(x.value), who: x.who, sup: !!x.sup, src: x.src || '', pid: x.pid || '' })), prices: (r.prices || []).map(q => ({ from: Number(q.from), price: Number(q.price) })) };
+    readings: r.readings.map(x => ({ rid: x.rid, t: new Date(x.time), v: Number(x.value), who: x.who, sup: !!x.sup, ent: x.ent ? new Date(x.ent) : null, src: x.src || '', pid: x.pid || '' })), prices: (r.prices || []).map(q => ({ from: Number(q.from), price: Number(q.price) })) };
 }
 async function loadHist(fresh) {
   const body = $('hbody'), id = current.id;
@@ -881,7 +886,8 @@ async function loadHist(fresh) {
 }
 const fmtD = x => fmtNum(Math.round(x * 100) / 100);
 // záznam smí upravit autor do 24 hodin, odemčený admin kdykoli
-const ownRec = x => x.who === hist.me && Date.now() - x.t.getTime() <= 864e5;
+// 24 h od času odečtu, u odečtu dodavatele (zadává se zpětným datem) od chvíle zadání
+const ownRec = x => x.who === hist.me && Date.now() - (x.ent || x.t).getTime() <= 864e5;
 const canEditRec = x => editable(current) && (ownRec(x) || adminOn());
 let edRec = null;
 const recById = rid => (hist.readings || []).find(x => x.rid === rid) || (hist.pending || []).find(x => x.rid === rid) || null;
@@ -892,6 +898,7 @@ function openEditor(rid) {
   $('edval').value = has ? String(x.v).replace('.', ',') : ''; $('ednote').value = '';
   $('edinfo').textContent = adm && !ownRec(x) ? 'Jako admin můžeš záznam upravit kdykoli.' : 'Svůj záznam můžeš upravit do 24 hodin od odečtu.';
   $('edsupwrap').classList.toggle('hide', !current.supplier); $('edsup').checked = !!x.sup;
+  $('edwhen').value = ymdOf(x.t); $('edwhen').max = ymdOf(new Date()); $('edwhenwrap').classList.toggle('hide', !(current.supplier && x.sup));
   $('edadmin').classList.toggle('hide', !adm); $('edai').classList.toggle('hide', !(adm && x.pid));
   $('edmsg').textContent = ''; $('edov').classList.remove('hide');
   // fotka záznamu pro kontrolu hodnoty
@@ -913,7 +920,7 @@ $('edimg').onclick = () => { if (edRec && edRec.pid) showRecordPhoto(edRec.pid, 
 function editError(r) {
   if (r.error === 'pin' || r.error === 'locked' || r.error === 'nopin') { if (r.error !== 'nopin') adminLock(); return adminError(r.error); }
   return r.error === 'expired' ? 'Uplynulo 24 hodin, úpravu může udělat správce.' : r.error === 'forbidden' ? 'K tomuto záznamu nemáš oprávnění.' : r.error === 'data' ? 'Zadej stav jako číslo.' :
-    r.error === 'ai' ? 'AI hodnotu nepřečetla' + (r.detail ? ': ' + String(r.detail).slice(0, 160) : '.') : r.error === 'nophoto' ? 'K záznamu není uložená fotka.' : r.error === 'excluded' ? 'Záznam je vyřazený.' : r.error === 'toobig' ? 'Fotka je příliš velká.' : r.error === 'nofile' ? 'Záznam nebyl nalezen.' : 'Uložení se nepovedlo. Zkus to prosím znovu.';
+    r.error === 'ai' ? 'AI hodnotu nepřečetla' + (r.detail ? ': ' + String(r.detail).slice(0, 160) : '.') : r.error === 'nophoto' ? 'K záznamu není uložená fotka.' : r.error === 'future' ? 'Datum nesmí být v budoucnosti.' : r.error === 'date' ? 'Neplatné datum.' : r.error === 'excluded' ? 'Záznam je vyřazený.' : r.error === 'toobig' ? 'Fotka je příliš velká.' : r.error === 'nofile' ? 'Záznam nebyl nalezen.' : 'Uložení se nepovedlo. Zkus to prosím znovu.';
 }
 async function edCall(body, okMsg) {
   if (navigator.onLine === false) return ($('edmsg').textContent = 'Bez připojení. Úpravu jde provést jen online.');
@@ -931,12 +938,13 @@ async function edCall(body, okMsg) {
   finally { btns.forEach(i => $(i).disabled = false); }
 }
 $('hbody').addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[data-edit]'); if (!a) return; e.preventDefault(); openEditor(a.dataset.edit); });
+$('edsup').onchange = () => $('edwhenwrap').classList.toggle('hide', !$('edsup').checked);
 $('edcancel').onclick = () => $('edov').classList.add('hide');
 $('edsave').onclick = () => {
   const x = edRec; if (!x) return;
   const raw = $('edval').value.trim(), v = roundTo(parseNum(raw), decOf(current));
   if (raw === '' || !isFinite(v)) return ($('edmsg').textContent = 'Zadej stav jako číslo.');
-  edCall({ action: 'editReading', rid: x.rid, value: v, note: $('ednote').value.trim(), supplier: current.supplier ? $('edsup').checked : undefined, pin: ownRec(x) ? undefined : adminPin }, () => 'Upraveno ✓');
+  edCall({ action: 'editReading', rid: x.rid, value: v, note: $('ednote').value.trim(), supplier: current.supplier ? $('edsup').checked : undefined, when: (current.supplier && $('edsup').checked && $('edwhen').value) ? $('edwhen').value : undefined, pin: ownRec(x) ? undefined : adminPin }, () => 'Upraveno ✓');
 };
 $('edai').onclick = () => { if (edRec) edCall({ action: 'rereadAi', rid: edRec.rid, pin: adminPin }, r => 'AI přečetla: ' + fmtNum(r.value) + ' ✓'); };
 $('edout').onclick = () => {
@@ -1028,7 +1036,7 @@ function renderHist() {
     // zdroj záznamu: z archu (papír), z fotky měřidla, přečtené AI, nebo jen ručně; u fotky je odkaz na ni
     const sr = /papír/.test(x.src) ? (x.pid ? '📄 z archu' : '📄 z papíru') : /AI/.test(x.src) ? (x.pid ? '📷 z fotky, četla AI' : '🤖 přečetla AI') : x.pid ? '📷 z fotky' : (x.src && x.src !== 'ručně' ? x.src : '✍️ zadáno ručně');
     const srh = x.pid ? '<a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="' + sr.replace(/[<"]/g, '') + '">' + sr.replace(/</g, '&lt;') + '</a>' : sr.replace(/</g, '&lt;');
-    return '<div class="hrow' + (neg ? ' neg' : '') + (x.sup ? ' sup' : '') + '"><span>' + fmtDT(x.t) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '<br><span class="src">' + (x.sup ? '<b class="supb">🏷️ odečet dodavatele</b> · ' : '') + srh + (canEditRec(x) ? ' · <a href="#" data-edit="' + String(x.rid).replace(/[^\w-]/g, '') + '">✎ upravit</a>' : '') + '</span></span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
+    return '<div class="hrow' + (neg ? ' neg' : '') + (x.sup ? ' sup' : '') + '"><span>' + (x.sup ? fmtDay(x.t) : fmtDT(x.t)) + (x.who ? '<br><span class="note">' + x.who.replace(/</g, '&lt;') + '</span>' : '') + '<br><span class="src">' + (x.sup ? '<b class="supb">🏷️ odečet dodavatele</b> · ' : '') + srh + (canEditRec(x) ? ' · <a href="#" data-edit="' + String(x.rid).replace(/[^\w-]/g, '') + '">✎ upravit</a>' : '') + '</span></span><span style="text-align:right"><b>' + fmtNum(x.v) + ' ' + unit + '</b><br><span class="inc">' + l1 + '</span>' + (l2 ? '<br><span class="inc">' + l2 + '</span>' : '') + '</span></div>';
   }).join('');
   $('hbody').innerHTML =
     '<div class="tiles"><div><b>' + fmtD(total) + ' ' + unit + '</b><span>spotřeba</span></div><div><b>' + (avgDay === null ? '–' : fmtD(avgDay) + ' ' + unit) + '</b><span>průměr za den</span></div><div><b>' + idx.length + '</b><span>odečtů</span></div></div>' +
@@ -1148,9 +1156,9 @@ $('shot').onclick = () => {
 
 // ================= po vyfocení: AI přečte stav =================
 async function afterShot(cv) {
-  const keep = !$('detail').classList.contains('hide') ? [$('dval').value, $('dnote').value, $('dsup').checked] : null; // doplnění fotky k rozepsanému záznamu
+  const keep = !$('detail').classList.contains('hide') ? [$('dval').value, $('dnote').value, $('dsup').checked, $('dwhen').value] : null; // doplnění fotky k rozepsanému záznamu
   openDetail(cv.toDataURL('image/jpeg', 0.8).split(',')[1]);
-  if (keep) { $('dval').value = keep[0]; $('dnote').value = keep[1]; $('dsup').checked = !!keep[2] && !!current.supplier; paintSup(); }
+  if (keep) { $('dval').value = keep[0]; $('dnote').value = keep[1]; $('dsup').checked = !!keep[2] && !!current.supplier; $('dwhen').value = keep[3] || ''; paintSup(); }
 }
 let source = 'ručně', aiValue = null, aiFailed = false, busySend = false;
 // photo = fotka (base64), nebo '' = zápis hodnoty bez fotky
@@ -1162,16 +1170,22 @@ function openDetail(photo) {
   if (photoB64) { $('dimg').src = 'data:image/jpeg;base64,' + photoB64; $('dimg').classList.remove('hide'); } else { $('dimg').removeAttribute('src'); $('dimg').classList.add('hide'); }
   $('dval').value = ''; $('dnote').value = ''; source = 'ručně'; aiValue = null; aiFailed = false;
   $('dlabel').textContent = 'Stav měřidla · ' + decText(decOf(current));
-  $('dsupwrap').classList.toggle('hide', !current.supplier); $('dsup').checked = !!current.supplier && pendingSup; pendingSup = false; paintSup();
+  $('dsupwrap').classList.toggle('hide', !current.supplier); $('dsup').checked = !!current.supplier && pendingSup; pendingSup = false; $('dwhen').value = ''; paintSup();
   $('dretake').textContent = photoB64 ? 'Vyfotit znovu' : '📷 Přidat fotku';
   paintSendMode();
 }
-function paintSup() { $('detail').classList.toggle('supmode', $('dsup').checked); }
+function paintSup() {
+  const on = $('dsup').checked;
+  $('detail').classList.toggle('supmode', on); $('dsupdate').classList.toggle('hide', !on);
+  if (on) { $('dwhen').max = ymdOf(new Date()); if (!$('dwhen').value) $('dwhen').value = ymdOf(new Date()); }
+  paintSendMode();
+}
 $('dsup').onchange = paintSup;
 function paintSendMode() {
   if ($('detail').classList.contains('hide') || busySend) return;
   const on = navigator.onLine !== false;
   $('dsend').textContent = on ? 'Odeslat' : 'Uložit (odešle se samo)';
+  if ($('dsup').checked) { $('dstatus').textContent = 'Odečet dodavatele: zadej datum a stav z faktury. Fotka (třeba faktury) je nepovinná. ' + (on ? '' : 'Jsi offline, záznam se uloží a odešle sám.'); return; }
   $('dstatus').textContent = !photoB64 ? 'Zapiš stav z měřidla. Fotku můžeš přidat tlačítkem níže.' : on ? 'Zadej stav z měřidla, nebo nech prázdné: po odeslání ho přečte AI z fotky.' : 'Jsi offline. Záznam se uloží v telefonu a sám se odešle, až bude signál. Prázdný stav přečte AI po odeslání.';
 }
 window.addEventListener('online', paintSendMode); window.addEventListener('offline', paintSendMode);
@@ -1194,10 +1208,14 @@ $('dsend').onclick = () => {
   const raw = $('dval').value.trim(), has = raw !== '';
   const value = has ? roundTo(parseNum(raw), decOf(current)) : null;
   if (has && !isFinite(value)) return toast('Stav zadej jako číslo, nebo nech pole prázdné.');
+  const supSend = !!(current.supplier && $('dsup').checked);
+  if (supSend && !has) return toast('U odečtu dodavatele zadej stav z faktury.');
+  if (supSend && !$('dwhen').value) return toast('U odečtu dodavatele zadej datum, ke kterému odečet platí.');
+  if (supSend && $('dwhen').value > ymdOf(new Date())) return toast('Datum odečtu nesmí být v budoucnosti.');
   if (!has && !photoB64) return toast('Zapiš stav měřidla, nebo přidej fotku.');
   if (has && current.last && value < current.last.value && !confirm('Zadaný stav (' + fmtNum(value) + ') je nižší než minule (' + fmtNum(current.last.value) + '). Opravdu odeslat?')) return;
   const body = { token: token(), id: current.id, note: $('dnote').value.trim(), photo: photoB64 };
-  if (current.supplier && $('dsup').checked) body.supplier = true;
+  if (supSend) { body.supplier = true; body.readingDate = $('dwhen').value; }
   if (has) { body.value = value; body.source = 'ručně'; } else { body.noValue = true; body.aiRead = true; body.source = 'AI na pozadí'; }
   body.clientId = newClientId(); body.takenAt = new Date().toISOString();
   if (navigator.onLine === false) return enqueueSend(body, 'Uloženo v telefonu. Odešle se samo, až bude signál.');
