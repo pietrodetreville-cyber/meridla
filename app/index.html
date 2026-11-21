@@ -145,7 +145,12 @@ html:has(#splash:not(.out)){overflow:hidden}
 .sugg .si{flex:none;width:34px;height:34px;border-radius:10px;display:grid;place-items:center;background:#66728220;font-size:1.1rem}
 .sugg .st{flex:1;min-width:0}.sugg .st b{display:block;font-size:.95rem}.sugg .st span{display:block;font-size:.78rem;color:var(--mut);font-weight:500}
 .noanim .meter{animation:none}
-.fbar{margin:0 0 8px}
+.fbox{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 10px 4px;margin:0 0 10px;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.fbox.hide{display:none}
+.fbox .sfind{position:relative;top:auto;z-index:6;padding:0 0 4px;margin:0 0 4px;border-bottom:1px solid var(--line)}
+.fbox .sfield{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0 2px}
+.fbox .sfield:focus-within{box-shadow:none}
+.fbar{margin:0}
 .fbar.hide{display:none}
 .frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:5px;padding:2px 0 5px}
 .frow.t{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
@@ -157,7 +162,8 @@ html:has(#splash:not(.out)){overflow:hidden}
 .tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 6px;margin-right:4px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
 .chip.late{background:var(--warn);color:#fff}
 .hero{position:relative;border-radius:14px;padding:10px 14px 11px;margin:6px 0 12px;color:var(--fg);background:var(--card);border:1px solid var(--line);border-left:4px solid var(--acc);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
-.hero .hi{font-size:.8rem;font-weight:600;color:var(--mut)}
+.hero{background:none;border:0;border-left:0;backdrop-filter:none;-webkit-backdrop-filter:none;padding:0 4px;margin:4px 0 10px}
+.hero .hi{font-size:1.05rem;font-weight:700;color:var(--fg)}
 .hero .big{font-size:1.02rem;font-weight:800;margin:1px 0 7px}
 .bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
 .bar i{display:block;height:100%;width:0;border-radius:999px;background:var(--acc);transition:width .8s cubic-bezier(.2,.8,.2,1)}
@@ -204,12 +210,14 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
 <div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
-<div class="hero" id="hero"><div class="hi" id="who"></div><div class="big" id="progress">…</div><div class="bar"><i id="barfill"></i></div></div>
+<div class="hero" id="hero"><div class="hi" id="who"></div></div>
+<div class="fbox" id="fbox">
 <div class="sfind" id="sbar">
-  <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat: budova, měřidlo, umístění…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
+  <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat měřidlo…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
   <div class="sugg hide" id="sugg"></div>
 </div>
 <div class="fbar hide" id="fbar"></div>
+</div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong id="updtxt">Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
 
@@ -308,7 +316,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.33.2';
+const VERSION = '1.34.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -409,7 +417,7 @@ function setBuilding(b) { building = b || ''; lsSet('meridla.building', building
 function renderSearchBar() {
   const bs = buildingList();
   if (building && !bs.includes(building)) building = '';
-  $('sbar').classList.toggle('hide', !meters.length);
+  $('sbar').classList.toggle('hide', !meters.length); $('fbox').classList.toggle('hide', !meters.length);
   const pill = $('bpill');
   pill.classList.add('hide'); pill.textContent = '';
   renderChips();
@@ -467,11 +475,6 @@ $('sugg').addEventListener('click', e => {
 });
 document.addEventListener('pointerdown', e => { if (!e.target.closest('#sbar')) hideSugg(); });
 $('q').addEventListener('keydown', e => { if (e.key === 'Escape') { hideSugg(); $('q').blur(); } });
-function renderProgress() {
-  const list = inBuilding(), total = list.length, due = list.filter(isDue).length, done = total - due;
-  $('progress').textContent = !total ? 'Zatím žádná měřidla' : !due ? (building ? bLabel(building) + ': vše hotovo 🎉' : 'Vše je hotovo 🎉') : 'K odečtu: ' + due + ' z ' + total;
-  $('barfill').style.width = total ? Math.round(done / total * 100) + '%' : '0%';
-}
 function chipFor(m) {
   if (m.pending) return '<span class="chip todo">čeká na hodnotu</span>';
   if (!isDue(m)) return '<span class="chip ok">✓ hotovo</span>';
@@ -480,7 +483,7 @@ function chipFor(m) {
 }
 function renderAll(noAnim) {
   $('list').classList.toggle('noanim', !!noAnim);
-  renderSearchBar(); renderProgress();
+  renderSearchBar();
   const list = visible().slice().sort((a, b) => (isDue(b) - isDue(a)) || ((b.overdueDays || 0) - (a.overdueDays || 0)));
   if (!list.length && meters.length) { $('list').innerHTML = '<p class="note" style="text-align:center;padding:18px 0">Žádné měřidlo neodpovídá hledání ani filtru.</p>'; return; }
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) && !queuedIds.has(m.id) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
@@ -701,7 +704,7 @@ $('pupload').onclick = async () => {
 // ================= obrazovky =================
 function show(name) {
   ['home', 'meter', 'hist', 'detail'].forEach(n => $(n).classList.toggle('hide', !(n === name || (name === 'meter' && n === 'hist'))));
-  $('hero').style.display = name === 'home' ? '' : 'none'; $('sbar').style.display = name === 'home' ? '' : 'none'; $('fbar').style.display = name === 'home' ? '' : 'none'; hideSugg();
+  $('hero').style.display = name === 'home' ? '' : 'none'; $('fbox').style.display = name === 'home' ? '' : 'none'; hideSugg();
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
@@ -1070,7 +1073,7 @@ $('ver').textContent = 'verze ' + VERSION + (ENV === 'test' ? ' · TEST' : '');
   } catch (e) {}
 })();
 if (ENV === 'test') { $('envbar').classList.remove('hide'); document.title = 'TEST · ' + document.title; }
-function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Ahoj, ' + w + ' 👋' : 'Ahoj 👋'; }
+function showWho() { const w = lsGet('meridla.who'); $('who').textContent = w ? 'Hezký den, ' + w : 'Hezký den'; }
 showWho();
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('sw.js').then(reg => {
