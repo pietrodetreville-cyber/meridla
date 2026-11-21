@@ -342,7 +342,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.42.0';
+const VERSION = '1.43.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -362,6 +362,9 @@ const decOf = m => Number.isInteger(m.decimals) ? m.decimals : 1;
 const roundTo = (v, d) => { const f = Math.pow(10, d); return Math.round(v * f) / f; };
 const decText = d => d === 0 ? 'zaokrouhleno na celá čísla' : d === 1 ? 'zaokrouhleno na 1 desetinné místo' : 'zaokrouhleno na ' + d + ' desetinná místa';
 const fmtNum = n => String(n).replace('.', ',');
+const fmtSec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
+const tm = { l: '', h: '' };
+function paintMs() { $('vms').textContent = [tm.l, tm.h].filter(Boolean).map(x => ' · ' + x).join(''); }
 const parseNum = s => Number(String(s).trim().replace(/\s/g, '').replace(',', '.'));
 function toast(t, ms) { const e = $('toast'); e.textContent = t; e.classList.remove('hide'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hide'), ms || 3500); }
 
@@ -509,7 +512,7 @@ async function loadList() {
     const t0 = performance.now();
     const r = await api('?token=' + encodeURIComponent(token()));
     lastLoad = Date.now();
-    if (ENV === 'test' && r.ms !== undefined) $('vms').textContent = ' · seznam: skript ' + r.ms + ' ms, celkem ' + Math.round(performance.now() - t0) + ' ms';
+    if (r.ms !== undefined) { tm.l = 'seznam ' + fmtSec(performance.now() - t0) + ' (skript ' + fmtSec(r.ms) + ')'; paintMs(); }
     if (!r.ok) { $('homenote').innerHTML = '<span class="warn">Odkaz není platný. Požádej o nový.</span>'; return; }
     meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); lsSet('meridla.who', r.who || ''); canEdit = r.edit !== false; canEditAll = r.editAll !== false; lsSet('meridla.edit', canEdit ? '1' : '0'); lsSet('meridla.editall', canEditAll ? '1' : '0'); showWho(); $('homenote').textContent = '';
   } catch (e) {
@@ -676,6 +679,7 @@ async function bfSend(force) {
     $('bflog').innerHTML = 'Zapsáno v tomto okně:<br>' + bfLog.slice(0, 8).join('<br>');
     $('bfval').value = ''; $('bfnote').value = ''; $('bfstat').textContent = ''; $('bfval').focus();
     toast(r.warn ? 'Zapsáno. Pozor: stav je nižší než předchozí záznam v tom čase.' : 'Záznam zapsán ✓', 3500);
+    histCacheDrop(am.id);
     const id = am.id; await loadList(); fillAdminMeters(); $('amsel').value = id; amPick();
   } catch (e) { $('bfstat').textContent = 'Bez připojení nebo chyba serveru.'; }
   finally { $('bfsave').disabled = false; }
@@ -821,16 +825,38 @@ function autoOffset() {
     hist.note = 'Za aktuální období nejsou žádné odečty, zobrazuji poslední období s daty.';
   }
 }
-async function loadHist() {
-  const body = $('hbody');
-  if (hist.id !== current.id || !hist.readings) {
-    body.innerHTML = '<p class="note">Načítám…</p>';
+// poslední známá historie měřidla (v paměti a v telefonu, nejvýš 12 měřidel) se ukáže hned, čerstvá se dotáhne
+const histMem = {};
+function histCacheGet(id) { if (histMem[id]) return histMem[id]; try { const v = JSON.parse(lsGet('meridla.h.' + id) || 'null'); if (v) { histMem[id] = v; return v; } } catch (e) {} return null; }
+function histCachePut(id, r) {
+  histMem[id] = r;
+  try {
+    const txt = JSON.stringify(r); if (txt.length > 70000) return;
+    let idx = []; try { idx = JSON.parse(lsGet('meridla.hl') || '[]'); } catch (e) {}
+    idx = idx.filter(x => x !== id); idx.push(id);
+    while (idx.length > 12) { const old = idx.shift(); lsSet('meridla.h.' + old, ''); delete histMem[old]; }
+    lsSet('meridla.h.' + id, txt); lsSet('meridla.hl', JSON.stringify(idx));
+  } catch (e) {}
+}
+function histCacheDrop(id) { delete histMem[id]; try { lsSet('meridla.h.' + id, ''); } catch (e) {} }
+function histFrom(id, r) {
+  return { id: id, range: hist.range, offset: 0, note: '', me: r.me || '', pending: (r.pending || []).map(x => ({ rid: x.rid, t: new Date(x.time), who: x.who, pid: x.pid || '' })),
+    readings: r.readings.map(x => ({ rid: x.rid, t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', pid: x.pid || '' })), prices: (r.prices || []).map(q => ({ from: Number(q.from), price: Number(q.price) })) };
+}
+async function loadHist(fresh) {
+  const body = $('hbody'), id = current.id;
+  if (hist.id !== id || !hist.readings) {
+    const c = fresh ? null : histCacheGet(id);
+    if (c) { hist = histFrom(id, c); autoOffset(); renderHist(); } else body.innerHTML = '<p class="note">Načítám…</p>';
+    const t0 = performance.now();
     try {
-      const r = await api('?token=' + encodeURIComponent(token()) + '&action=history&id=' + encodeURIComponent(current.id));
+      const r = await api('?token=' + encodeURIComponent(token()) + '&action=history&id=' + encodeURIComponent(id));
       if (!r.ok) throw new Error(r.error || 'chyba');
-      hist = { id: current.id, range: hist.range, offset: 0, note: '', me: r.me || '', pending: (r.pending || []).map(x => ({ rid: x.rid, t: new Date(x.time), who: x.who, pid: x.pid || '' })), readings: r.readings.map(x => ({ rid: x.rid, t: new Date(x.time), v: Number(x.value), who: x.who, src: x.src || '', pid: x.pid || '' })), prices: (r.prices || []).map(q => ({ from: Number(q.from), price: Number(q.price) })) };
-      autoOffset();
-    } catch (e) { body.innerHTML = '<p class="note warn">Detail se nepodařilo načíst' + (e instanceof TypeError ? ' (bez připojení)' : '') + '.</p>'; return; }
+      if (r.ms !== undefined) { tm.h = 'detail ' + fmtSec(performance.now() - t0) + ' (skript ' + fmtSec(r.ms) + ')'; paintMs(); }
+      if (current.id !== id) return; // mezitím se otevřelo jiné měřidlo
+      histCachePut(id, r);
+      hist = histFrom(id, r); autoOffset();
+    } catch (e) { if (c) return; body.innerHTML = '<p class="note warn">Detail se nepodařilo načíst' + (e instanceof TypeError ? ' (bez připojení)' : '') + '.</p>'; return; }
   }
   renderHist();
 }
@@ -878,7 +904,7 @@ async function edCall(body, okMsg) {
     if (r.ok) {
       if (adminOn()) adminUntil = Date.now() + 10 * 60 * 1000;
       $('edov').classList.add('hide'); toast(okMsg(r), 4500);
-      const id = current.id; hist.readings = null; loadHist();
+      const id = current.id; histCacheDrop(id); hist.readings = null; loadHist(true);
       loadList().then(() => { current = meters.find(m => m.id === id) || current; });
     } else $('edmsg').textContent = editError(r);
   } catch (e) { $('edmsg').textContent = 'Bez připojení nebo chyba serveru.'; }
@@ -1161,7 +1187,7 @@ async function directSend(body, has) {
     return queueIt();
   }
   releaseLock();
-  const id = current.id;
+  const id = current.id; histCacheDrop(id);
   if (r.pendingValue) toast('Fotka je uložená, ale AI hodnotu nepřečetla. Doplň ji ručně (✎ upravit) nebo ji doplní výbor.', 9000);
   else if (r.dup) toast('Tenhle záznam už byl zapsán.');
   else yay('Zapsáno: ' + fmtNum(r.value) + ' ' + (current.unit || '') + (r.source === 'AI na pozadí' ? ' (přečetla AI)' : '') + (r.warn ? ' · pozor, nižší než minule' : ''));

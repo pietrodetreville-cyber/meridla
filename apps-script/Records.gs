@@ -62,6 +62,7 @@ function applyValue_(sh, rec, meter, value, who, how, extraNote) {
   sh.getRange(n, 12).setValue('');
   sh.getRange(n, COL_EDIT).setValue(how + ': ' + who + ' ' + nowText_());
   relink_(sh, meter.id);
+  bustCache_(meter.id);
 }
 
 function editReading_(body, P, who) {
@@ -95,6 +96,7 @@ function excludeReading_(body, P, who) {
     if (body.restore) { sh.getRange(rec.n, COL_OUT).setValue(''); range.setBackground(null); }
     else { sh.getRange(rec.n, COL_OUT).setValue('VYŘAZENO · ' + who + ' · ' + nowText_() + (body.reason ? ' · ' + String(body.reason).slice(0, 120) : '')); range.setBackground('#fde2e1'); }
     relink_(sh, meter.id);
+    bustCache_(meter.id);
     return { ok: true };
   } finally { lock.releaseLock(); }
 }
@@ -142,4 +144,31 @@ function lockedMap_(ids, who) {
     ids.forEach(id => { const v = got[lockKey_(id)]; if (v) { const c = JSON.parse(v); if (c.by !== who) out[id] = c.by; } });
   } catch (e) {}
   return out;
+}
+
+// ---------- archivace starých záznamů (menu) ----------
+// Záznamy starší než 2 roky se přesunou do listu Odečty_archiv (nic se nemaže). U každého měřidla zůstane v Odečtech nejnovější
+// záznam z doby před hranicí, aby navazovaly přírůstky. V aplikaci se pak ukáže jen novější historie.
+function archiveOldReadings() {
+  const ui = SpreadsheetApp.getUi(), ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(SHEET_READINGS);
+  const data = sh.getDataRange().getValues(), ncol = data[0].length, cut = new Date();
+  cut.setMonth(cut.getMonth() - 24);
+  const newest = {};
+  data.forEach((r, i) => { if (i > 0 && r[0] && new Date(r[0]) < cut && !r[COL_OUT - 1]) { const k = String(r[1]); if (newest[k] === undefined || new Date(r[0]) > new Date(data[newest[k]][0])) newest[k] = i; } });
+  const keep = {}; Object.keys(newest).forEach(k => { keep[newest[k]] = true; });
+  const move = []; data.forEach((r, i) => { if (i > 0 && r[0] && new Date(r[0]) < cut && !keep[i]) move.push(i); });
+  const when = Utilities.formatDate(cut, ss.getSpreadsheetTimeZone(), 'd. M. yyyy');
+  if (!move.length) { ui.alert('Archivace', 'Nic staršího než ' + when + ' k archivaci není.', ui.ButtonSet.OK); return; }
+  if (ui.alert('Archivace', 'Přesunout ' + move.length + ' záznamů starších než ' + when + ' do listu Odečty_archiv? Nic se nemaže, záznamy budou v archivu. V aplikaci se pak ukáže jen novější historie.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    let arch = ss.getSheetByName('Odečty_archiv');
+    if (!arch) { arch = ss.insertSheet('Odečty_archiv'); arch.getRange(1, 1, 1, ncol).setValues([data[0]]); arch.setFrozenRows(1); }
+    arch.getRange(arch.getLastRow() + 1, 1, move.length, ncol).setValues(move.map(i => data[i].slice(0, ncol)));
+    // řádky se z Odečtů odstraní až po zápisu do archivu, od konce po souvislých blocích
+    let end = move.length - 1;
+    while (end >= 0) { let start = end; while (start > 0 && move[start - 1] === move[start] - 1) start--; sh.deleteRows(move[start] + 1, end - start + 1); end = start - 1; }
+    bustAll_();
+  } finally { lock.releaseLock(); }
+  ui.alert('Hotovo', 'Přesunuto ' + move.length + ' záznamů do listu Odečty_archiv.', ui.ButtonSet.OK);
 }

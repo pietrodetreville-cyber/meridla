@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.35.0';
+const SCRIPT_VERSION = '1.36.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -109,7 +109,7 @@ function setup() {
 }
 
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -213,6 +213,7 @@ function fillIds_() {
       used[id] = 1;
       sh.getRange(i + 1, ci + 1).setValue(id);
     }
+    bustMeters_();
   } finally {
     lock.releaseLock();
   }
@@ -236,11 +237,35 @@ function round_(x, d) { const f = Math.pow(10, d); return Math.round(x * f) / f;
 
 // seznam měřidel se v rámci jednoho požadavku (doGet / doPost) čte z tabulky jen jednou
 let MEMO_ON_ = false, METERS_MEMO_ = null, MISSING_IDS_ = false;
+// ---------- mezipaměť (CacheService): souhrn posledních hodnot, seznam měřidel a historie měřidla ----------
+// Zápis záznamu mezipaměť zneplatní. Ruční úprava přímo v tabulce se projeví nejpozději za dobu platnosti (TTL).
+const CACHE_TTL = { meters: 180, sum: 300, hist: 600, prices: 300 };
+function cacheGetJson_(k) { try { const v = CacheService.getScriptCache().get(k); return v ? JSON.parse(v) : null; } catch (e) { return null; } }
+function cachePutJson_(k, obj, ttl) { try { const t = JSON.stringify(obj); if (t.length < 90000) CacheService.getScriptCache().put(k, t, ttl); } catch (e) {} }
+function bustCache_(meterId) { try { CacheService.getScriptCache().removeAll(['SUM', 'H:' + meterId]); } catch (e) {} }
+function bustMeters_() { try { CacheService.getScriptCache().remove('METERS'); } catch (e) {} METERS_MEMO_ = null; }
+function bustAll_() { try { const ids = metersRead_().map(m => m.id); CacheService.getScriptCache().removeAll(['SUM', 'METERS'].concat(ids.map(i => 'H:' + i))); } catch (e) {} METERS_MEMO_ = null; }
 function meters_() {
   if (MEMO_ON_ && METERS_MEMO_) return METERS_MEMO_;
-  const r = metersRead_();
+  let r = MEMO_ON_ ? cacheGetJson_('METERS') : null;
+  if (!r) {
+    r = metersRead_();
+    if (MEMO_ON_ && !MISSING_IDS_) cachePutJson_('METERS', r, CACHE_TTL.meters); // s chybějícím id se nic neukládá, dokud se id nedoplní
+  }
   if (MEMO_ON_) METERS_MEMO_ = r;
   return r;
+}
+// poslední hodnota a stav "čeká na hodnotu" každého měřidla (z listu Odečty se čte jen při prázdné mezipaměti)
+function summary_() {
+  const c = cacheGetJson_('SUM'); if (c) return c;
+  const by = {};
+  readings_().sort((a, b) => a.time - b.time).forEach(x => {
+    const s = by[x.id] || (by[x.id] = { v: null, t: null, w: '', p: false });
+    s.p = !x.has;
+    if (x.has) { s.v = x.value; s.t = x.time.toISOString(); s.w = x.who; }
+  });
+  cachePutJson_('SUM', by, CACHE_TTL.sum);
+  return by;
 }
 function metersRead_() {
   const types = {};
@@ -323,9 +348,15 @@ function doGet(e) {
   if (e.parameter.action === 'history') {
     const hm = meters_().find(m => m.id === e.parameter.id);
     if (!hm || !canSee_(P, hm)) return ok_({ ok: false, error: 'forbidden' });
-    const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
-    const pend = readings_().filter(x => x.id === e.parameter.id && !x.has).sort((a, b) => a.time - b.time).slice(-20);
-    return ok_({ ok: true, ms: Date.now() - T0, me: who, readings: rows.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), pending: pend.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })), prices: pricesFor_((meters_().find(m => m.id === e.parameter.id) || {}).typeName) });
+    let hd = cacheGetJson_('H:' + hm.id);
+    if (!hd) {
+      const mine = readings_().filter(x => x.id === hm.id).sort((a, b) => a.time - b.time);
+      hd = { r: mine.filter(x => x.has).slice(-800).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), p: mine.filter(x => !x.has).slice(-20).map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })) };
+      cachePutJson_('H:' + hm.id, hd, CACHE_TTL.hist);
+    }
+    let pr = cacheGetJson_('PR:' + hm.typeName);
+    if (!pr) { pr = pricesFor_(hm.typeName); cachePutJson_('PR:' + hm.typeName, pr, CACHE_TTL.prices); }
+    return ok_({ ok: true, ms: Date.now() - T0, me: who, readings: hd.r, pending: hd.p, prices: pr });
   }
   if (e.parameter.action === 'rphoto') return ok_(recordImage_(e.parameter.f, P));
   if (e.parameter.action === 'place') {
@@ -334,14 +365,13 @@ function doGet(e) {
   }
   meters_();
   if (MISSING_IDS_) { fillIds_(); METERS_MEMO_ = null; } // doplnění id jen když nějaké chybí
-  const all = readings_();
+  const sm = summary_();
   const locks = lockedMap_(meters_().map(m => m.id), who);
   const list = meters_().filter(m => canSee_(P, m)).map(m => {
-    const mine = all.filter(x => x.id === m.id).sort((a, b) => b.time - a.time);
-    const lastAny = mine[0], lastVal = mine.find(x => x.has);
+    const sx = sm[m.id], lastVal = sx && sx.t ? { value: sx.v, time: new Date(sx.t), who: sx.w } : null;
     // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
     const di = dueInfo_(m, lastVal);
-    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
+    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!sx && sx.p, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
   });
   return ok_({ ok: true, ms: Date.now() - T0, who: who, edit: P.edit, editAll: P.editAll, meters: list });
 }
@@ -459,6 +489,7 @@ function doPost(e) {
     const err = noValue ? 'Hodnota nezapsána' + (aiFailed ? ' (OCR ji nepřečetlo)' : '') : '';
     sheet.appendRow([when, meter.id, meter.name, noValue ? '' : value, (!noValue && prev) ? prev.value : '', diff, note, fileUrl,
       noValue ? 'bez hodnoty' : source, who, meter.building, err, rid]);
+    bustCache_(meter.id);
 
     if (noValue) {
       try { sendMissingMail_(meter, who, rid, blob, aiFailed); } catch (mailErr) { Logger.log('E-mail o chybějící hodnotě se nepodařilo odeslat: ' + mailErr.message); }
@@ -580,6 +611,7 @@ function submitValue(rid, key, value, name) {
     sh.getRange(n, 7).setValue(note);
     sh.getRange(n, 9).setValue('doplněno ručně (e-mail)');
     sh.getRange(n, 12).setValue('');
+    bustCache_(String(row[1]));
     return { ok: true, value: v };
   } finally {
     lock.releaseLock();
@@ -617,7 +649,7 @@ function placeUpload_(body) {
     let col = head.findIndex(x => /^(fotka|plánek)[_ ]?místa/i.test(String(x).trim()));
     if (col < 0) { col = head.findIndex(x => String(x).trim() === ''); if (col < 0) col = head.length; sh.getRange(1, col + 1).setValue('Fotka_místa'); }
     sh.getRange(meter.row, col + 1).setValue(name);
-    METERS_MEMO_ = null;
+    bustMeters_();
     return { ok: true, name: name };
   } finally {
     lock.releaseLock();
@@ -641,6 +673,7 @@ function backfillCore_(meter, when, value, note, who, force, photoUrl) {
   sheet.appendRow([when, meter.id, meter.name, value, prev ? prev.value : '', diff, n, photoUrl || '', 'doplněno zpětně (papír)', who, meter.building, '', rid]);
   // následující záznam má nový předchozí stav
   if (next && next.row) { sheet.getRange(next.row, 5).setValue(value); sheet.getRange(next.row, 6).setValue(Math.round((next.value - value) * 1000) / 1000); }
+  bustCache_(meter.id);
   return { ok: true, diff: diff, warn: !!(prev && value < prev.value) };
 }
 
@@ -806,7 +839,7 @@ function clearTestData() {
   if (r && r.getLastRow() > 1) { r.getRange(2, 1, r.getLastRow() - 1, Math.max(1, r.getLastColumn())).clearContent(); out.push('Odečty: smazány zkopírované řádky'); }
   const p = ss.getSheetByName(SHEET_PEOPLE);
   if (p && p.getLastRow() > 1) { p.getRange(2, 2, p.getLastRow() - 1, 2).clearContent(); out.push('Lidé: smazány zkopírované tajné kódy a odkazy (vygeneruješ nové)'); }
-  props_().deleteProperty('NOTIF');
+  props_().deleteProperty('NOTIF'); bustAll_();
   Logger.log(out.join(String.fromCharCode(10)) + String.fromCharCode(10) + 'Teď spusť resetToken a vygeneruj odkazy (menu Měřidla).');
   try { SpreadsheetApp.getActive().toast(out.join(' · ') + ' · Teď spusť resetToken.', 'Hotovo', 25); } catch (e) {}
 }
@@ -842,7 +875,7 @@ function resetReadings() {
   if (n < 1) { ui.alert('List Odečty je prázdný.'); return; }
   if (ui.alert('Resetovat záznamy', 'Opravdu vymazat všech ' + n + ' řádků z listu Odečty (hlavička zůstane)? Záloha se nedělá. Fotky na Disku zůstanou. Vrátit to půjde jen přes Soubor → Historie verzí.', ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
-  try { sh.getRange(2, 1, n, sh.getLastColumn()).clearContent(); props_().deleteProperty('NOTIF'); } finally { lock.releaseLock(); }
+  try { sh.getRange(2, 1, n, sh.getLastColumn()).clearContent(); props_().deleteProperty('NOTIF'); bustAll_(); } finally { lock.releaseLock(); }
   ui.alert('Hotovo. Vymazáno ' + n + ' řádků.');
 }
 
