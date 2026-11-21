@@ -356,7 +356,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.45.0';
+const VERSION = '1.46.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -371,6 +371,7 @@ const token = () => lsGet('meridla.token') || '';
 const fmtDate = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '.'; };
 const pad2 = n => String(n).padStart(2, '0');
 const ymdOf = d => d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+const fmtTerm = t => { const p = String(t || '').split('-'); return p.length === 3 ? Number(p[2]) + '. ' + Number(p[1]) + '.' : ''; };
 const fmtDay = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '. ' + d.getFullYear(); };
 const fmtDT = s => { const d = new Date(s); return d.getDate() + '. ' + (d.getMonth() + 1) + '. v ' + d.getHours() + ':' + String(d.getMinutes()).padStart(2, '0'); };
 const lastInfo = m => m.last ? 'Naposledy: ' + fmtDT(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'Zatím nikdo nefotil';
@@ -521,7 +522,7 @@ function renderAll(noAnim) {
   $('list').innerHTML = list.map((m, i) => '<button class="meter' + (isDue(m) && !queuedIds.has(m.id) ? '' : ' done') + '" data-id="' + m.id + '" style="animation-delay:' + i * 60 + 'ms">' +
     '<span class="ico">' + iconFor(m) + '</span><span class="t"><b>' + ((!building || bOf(m) !== building) && m.building ? '<span class="tag">' + m.building.replace(/</g, '&lt;') + '</span>' : '') + (m.supplier ? '<span class="supt" title="Pod plombou dodavatele">🏷️</span> ' : '') + m.name.replace(/</g, '&lt;') + ' <span class="mid">– ' + idLabel(m).replace(/</g, '&lt;') + '</span></b>' +
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
-    (m.lockedBy ? '<span class="s warn">🔒 právě zapisuje ' + m.lockedBy.replace(/</g, '&lt;') + '</span>' : '') + (queuedIds.has(m.id) ? '<span class="s warn">⏳ čeká na odeslání (uloženo v telefonu)</span>' : '') + (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
+    (m.lockedBy ? '<span class="s warn">🔒 právě zapisuje ' + m.lockedBy.replace(/</g, '&lt;') + '</span>' : '') + (queuedIds.has(m.id) ? '<span class="s warn">⏳ čeká na odeslání (uloženo v telefonu)</span>' : '') + (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (m.interval ? (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval) : (isDue(m) ? (m.term ? 'rozhodující termín byl ' + fmtTerm(m.term) : '') : 'další rozhodující odečet ' + fmtTerm(m.nextTerm) + ' (za ' + days(m.remainingDays || 0) + ')')) + '</span>' + chipFor(m) + '</span></span></button>').join('');
 }
 let lastLoad = 0;
 async function loadList() {

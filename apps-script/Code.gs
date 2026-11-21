@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.40.0';
+const SCRIPT_VERSION = '1.41.1';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -340,7 +340,7 @@ function metersRead_() {
       decimals: dec,
       supplier: (() => { const k = findKey_(v, /^(dodavatel|plomb)/); return k ? /^(ano|a|1|x|true|yes)$/i.test(String(v[k] === undefined || v[k] === null ? '' : v[k]).trim()) : false; })(),
       icon: String(t['ikona'] || '').trim(),
-      interval: num(v['interval (dny)'] || v['interval']) || num(t['výchozí interval (dny)']) || 7
+      interval: num(v['interval (dny)'] || v['interval']) // 0 = rozhodující termín poslední den v měsíci; vyplněný interval (dny) má přednost
     };
   });
 }
@@ -358,11 +358,35 @@ function dayNum_(d) {
   const p = Utilities.formatDate(d, SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM-dd').split('-').map(Number);
   return Math.floor(Date.UTC(p[0], p[1] - 1, p[2]) / 864e5);
 }
-// stav měřidla podle jeho intervalu: due = je čas na odečet
+// ---------- rozhodující termín odečtu: poslední den v měsíci ----------
+// Platí pro měřidla bez vyplněného pole Interval (dny); vyplněný interval měřidla má přednost (denní rytmus od posledního odečtu).
+// Odečty mezi termíny se zapisují, ale cyklus upozornění neovlivňují.
+// Termín za měsíc je splněný odečtem v tento poslední den, nebo prvním odečtem po něm. Měřidlo je k odečtu (due),
+// dokud od posledního uplynulého termínu (nebo dne, kdy termín je) nebyl žádný odečet s hodnotou.
+const dayStr_ = dn => { const d = new Date(dn * 864e5); return d.getUTCFullYear() + '-' + String(d.getUTCMonth() + 1).padStart(2, '0') + '-' + String(d.getUTCDate()).padStart(2, '0'); };
+// poslední den měsíce, ve kterém leží den dn (dn = číslo dne od 1. 1. 1970)
+function monthEnd_(dn) { const d = new Date(dn * 864e5); return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0) / 864e5); }
+// nejnovější termín, který už nastal (dnes včetně): poslední den tohoto měsíce, pokud už je dnes, jinak poslední den předchozího měsíce
+function lastTerm_(dn) {
+  const e = monthEnd_(dn);
+  if (dn >= e) return e;
+  const d = new Date(dn * 864e5);
+  return Math.floor(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 0) / 864e5);
+}
+// stav měřidla: due = chybí odečet za poslední nastalý termín; term/nextTerm jako yyyy-MM-dd
 function dueInfo_(m, last) {
-  if (!last) return { due: true, overdueDays: 0, remainingDays: 0, daysSince: null };
-  const ds = dayNum_(new Date()) - dayNum_(last.time);
-  return { due: ds >= m.interval, overdueDays: Math.max(0, ds - m.interval), remainingDays: Math.max(0, m.interval - ds), daysSince: ds };
+  const today = dayNum_(new Date());
+  // měřidlo s vyplněným intervalem: dosavadní denní rytmus od posledního odečtu
+  if (m && m.interval > 0) {
+    if (!last) return { mode: 'interval', key: 'none', due: true, overdueDays: 0, remainingDays: 0, daysSince: null };
+    const ds = today - dayNum_(last.time);
+    return { mode: 'interval', key: last.time.toISOString(), due: ds >= m.interval, overdueDays: Math.max(0, ds - m.interval), remainingDays: Math.max(0, m.interval - ds), daysSince: ds };
+  }
+  const term = lastTerm_(today), next = monthEnd_(term + 1);
+  const base = { mode: 'month', key: dayStr_(term), term: dayStr_(term), nextTerm: dayStr_(next) };
+  if (!last) return Object.assign(base, { due: true, overdueDays: 0, remainingDays: 0, daysSince: null });
+  const done = dayNum_(last.time) >= term;
+  return Object.assign(base, { due: !done, overdueDays: done ? 0 : today - term, remainingDays: done ? next - today : 0, daysSince: today - dayNum_(last.time) });
 }
 
 // začátek aktuálního týdne (pondělí 0:00 v časové zóně tabulky)
@@ -407,7 +431,7 @@ function doGet(e) {
     const sx = sm[m.id], lastVal = sx && sx.t ? { value: sx.v, time: new Date(sx.t), who: sx.w } : null;
     // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
     const di = dueInfo_(m, lastVal);
-    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!sx && sx.p, lastSup: sx && sx.st ? { value: sx.sv, time: sx.st } : null, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
+    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!sx && sx.p, lastSup: sx && sx.st ? { value: sx.sv, time: sx.st } : null, due: di.due, term: di.term || '', nextTerm: di.nextTerm || '', overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
   });
   return ok_({ ok: true, ms: Date.now() - T0, who: who, edit: P.edit, editAll: P.editAll, meters: list });
 }
@@ -918,7 +942,7 @@ function checkMeters() {
   SpreadsheetApp.getUi().alert((problems.length ? 'Nalezeno ' + problems.length + ' problémů:\n\n' + problems.join('\n') : 'Všechna měřidla jsou v pořádku (' + total + ').') + info);
 }
 
-// ---------- upozornění e-mailem, když není dodržen interval ----------
+// ---------- upozornění e-mailem, když chybí rozhodující odečet (poslední den v měsíci) ----------
 // Pravidla jsou v listu Upozornění: Komu (e-mail, víc adres odděl čárkou), Budova (prázdné = všechny), Dní po termínu (0 = v den termínu).
 // Každé pravidlo upozorní na dané měřidlo jen jednou za jeden termín (po novém odečtu se začíná znovu).
 // ---------- pozastavení e-mailů a reset záznamů (volá se z menu) ----------
@@ -975,7 +999,7 @@ function reminder() {
     rules.forEach((r, ri) => {
       if (r.building && r.building.toLowerCase() !== String(m.building).toLowerCase() && r.building.toLowerCase() !== String(m.parent).toLowerCase()) return;
       if (last ? di.overdueDays < r.after : r.after > 0) return;
-      const key = ri + '|' + m.id + '|' + (last ? last.time.toISOString() : 'none');
+      const key = ri + '|' + m.id + '|' + di.key; // jedno upozornění za měřidlo a termín (u intervalu za poslední odečet)
       if (sent[key]) { next[key] = sent[key]; return; }
       (out[ri] = out[ri] || []).push({ m: m, key: key, last: last, di: di });
     });
@@ -989,7 +1013,7 @@ function reminder() {
       MailApp.sendEmail({
         to: rules[ri].to,
         subject: envTag_() + 'Fotoapp SVJ: chybí odečty měřidel (' + items.length + ')',
-        body: 'Dobrý den,' + '\n\n' + 'u těchto měřidel nebyl dodržen interval odečtu:' + '\n\n' + lines.join('\n') + '\n\n' + 'Otevřít aplikaci: ' + base + '\n\n' + 'Tato zpráva se pro každé měřidlo posílá jen jednou za jeden termín.',
+        body: 'Dobrý den,' + '\n\n' + 'u těchto měřidel chybí odečet za rozhodující termín (poslední den v měsíci, nebo interval měřidla):' + '\n\n' + lines.join('\n') + '\n\n' + 'Otevřít aplikaci: ' + base + '\n\n' + 'Tato zpráva se pro každé měřidlo posílá jen jednou za jeden termín.',
         name: 'Fotoapp SVJ Od Vysoké'
       });
       items.forEach(it => { next[it.key] = new Date().toISOString(); });
