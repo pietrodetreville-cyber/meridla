@@ -228,6 +228,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
   <button class="sec" id="reload" type="button">Obnovit seznam</button>
   <div id="hadminpanel" class="card hide">
     <div class="row" style="align-items:center"><b style="flex:1">Admin</b><button class="sec" id="aclose" type="button" style="flex:none">Zavřít admin</button></div>
+    <div id="archsec">
     <div class="note" style="margin:4px 0 8px">Vyfoť papírový arch. Fotka se jen uloží na Disk (složka Papírové záznamy). Čtení hodnot AI a zápis uděláš později v tabulce přes okno Import z papíru.</div>
     <div class="row"><button class="sec" id="acamb" type="button">📷 Vyfotit arch</button><button class="sec" id="afileb" type="button">🖼️ Z galerie</button></div>
     <input id="acam" type="file" accept="image/*" capture="environment" class="hide"><input id="afile" type="file" accept="image/*" class="hide">
@@ -235,6 +236,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
     <div class="note" id="astat" style="margin-top:8px"></div>
     <div class="row"><button id="aupload" class="hide" type="button">Uložit fotku</button><button class="sec hide" id="acancel" type="button">Zrušit</button></div>
     <div class="note" id="aresult"></div>
+    </div>
     <hr class="sep">
     <b>Měřidlo</b>
     <div class="note" style="margin:4px 0 6px">Pro fotku místa a zpětný záznam vyber měřidlo.</div>
@@ -317,7 +319,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.37.0';
+const VERSION = '1.38.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -388,9 +390,10 @@ window.addEventListener('online', () => { showQueue(); flushQueue(); });
 window.addEventListener('offline', showQueue);
 
 // ================= seznam měřidel =================
-let meters = [], current = null, canEdit = lsGet('meridla.edit') !== '0';
+let meters = [], current = null, canEdit = lsGet('meridla.edit') !== '0', canEditAll = lsGet('meridla.editall') !== '0';
 // kdo smí jen prohlížet, nevidí focení ani admin
-function applyEdit() { $('mshot').classList.toggle('hide', !canEdit); $('hadmin').classList.toggle('hide', !canEdit); if (!canEdit) $('homenote').textContent = 'Máš oprávnění jen prohlížet. Odečty zapisovat nemůžeš.'; }
+const editable = m => !m || m.editable !== false;
+function applyEdit() { $('hadmin').classList.toggle('hide', !canEdit); $('archsec').classList.toggle('hide', !canEditAll); if (!canEdit) $('homenote').textContent = 'Máš oprávnění jen prohlížet. Odečty zapisovat nemůžeš.'; }
 const iconFor = m => { if (m.icon) return m.icon; const n = ((m.typeName || '') + ' ' + m.name + ' ' + (m.unit || '')).toLowerCase(); return /elektr|kwh/.test(n) ? '⚡' : /vod|m³/.test(n) && !/plyn/.test(n) ? '💧' : /plyn/.test(n) ? '🔥' : /tepl|kalor|gj|mwh/.test(n) ? '🌡️' : '📟'; };
 const isDue = m => m.due !== undefined ? m.due : !m.doneThisWeek;
 const plural = (n, a, b, c) => n === 1 ? a : n >= 2 && n <= 4 ? b : c;
@@ -481,7 +484,7 @@ async function loadList() {
   try {
     const r = await api('?token=' + encodeURIComponent(token()));
     if (!r.ok) { $('homenote').innerHTML = '<span class="warn">Odkaz není platný. Požádej o nový.</span>'; return; }
-    meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); lsSet('meridla.who', r.who || ''); canEdit = r.edit !== false; lsSet('meridla.edit', canEdit ? '1' : '0'); showWho(); $('homenote').textContent = '';
+    meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); lsSet('meridla.who', r.who || ''); canEdit = r.edit !== false; canEditAll = r.editAll !== false; lsSet('meridla.edit', canEdit ? '1' : '0'); lsSet('meridla.editall', canEditAll ? '1' : '0'); showWho(); $('homenote').textContent = '';
   } catch (e) {
     try { meters = JSON.parse(lsGet('meridla.meters') || '[]'); } catch (e2) { meters = []; }
     $('homenote').textContent = meters.length ? 'Bez připojení: zobrazen poslední známý seznam.' : 'Nelze načíst seznam, zkontroluj připojení.';
@@ -572,7 +575,7 @@ function amPick() { am = meters.find(m => m.id === $('amsel').value) || null; $(
 function fillAdminMeters() {
   const s = $('amsel'), keep = s.value; s.textContent = '';
   const o0 = document.createElement('option'); o0.value = ''; o0.textContent = '— vyber měřidlo —'; s.appendChild(o0);
-  meters.forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name + (m.building ? ' · ' + m.building : '') + ' (' + idLabel(m) + ')'; s.appendChild(o); });
+  meters.filter(editable).forEach(m => { const o = document.createElement('option'); o.value = m.id; o.textContent = m.name + (m.building ? ' · ' + m.building : '') + ' (' + idLabel(m) + ')'; s.appendChild(o); });
   s.value = keep; amPick();
 }
 $('amsel').onchange = amPick;
@@ -695,7 +698,8 @@ function openMeter(m) {
   current = m;
   $('micon').textContent = iconFor(m); $('mname').textContent = m.name + ' · ' + idLabel(m);
   $('msub').textContent = [m.building ? bLabel(m.building) : '', m.place, m.typeName].filter(Boolean).join(' · ');
-  $('mlast').textContent = lastInfo(m) + (m.last ? ' (stav ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ')' : '');
+  $('mlast').textContent = lastInfo(m) + (m.last ? ' (stav ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ')' : '') + (editable(m) ? '' : ' · jen prohlížení');
+  $('mshot').classList.toggle('hide', !editable(m));
   // box s popisem místa: když je k měřidlu fotka / plánek, je celý tlačítkem, které ji otevře
   const pl = $('mplace'); pl.textContent = '';
   if (m.placeHelp || m.placePhoto) {

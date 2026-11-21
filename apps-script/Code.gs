@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.32.0';
+const SCRIPT_VERSION = '1.33.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -143,28 +143,34 @@ function props_() { return PropertiesService.getScriptProperties(); }
 // Vrací jméno člověka podle tajného kódu, nebo '' když kód neplatí.
 // Hlavní kód (vlastnost TOKEN) patří "Správci", ostatní kódy jsou v listu Lidé.
 // ---------- lidé a jejich oprávnění ----------
-// list Lidé: Jméno | Tajný kód | Odkaz | Budovy (např. "271, 273"; prázdné = všechny) | Oprávnění ("vidět" nebo "editovat"; prázdné = editovat)
+// list Lidé: Jméno | Tajný kód | Odkaz | Vidí | Edituje
+//  Vidí:    budovy, které osoba vidí (např. "271, 273"); prázdné = všechny
+//  Edituje: budovy, kde smí zapisovat (např. "Kotelna"); prázdné nebo "všechny" = všechny, které vidí; "nic" nebo "vidět" = nic (jen prohlíží)
 // Kotelna patří pod budovu 271 (stejně jako v aplikaci), takže kdo má 271, vidí i Kotelnu.
 function normKey_(v) { return String(v === undefined || v === null ? '' : v).normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toLowerCase(); }
+function personList_(v) { return String(v === undefined || v === null ? '' : v).split(/[,;\n]+/).map(normKey_).filter(Boolean); }
 function person_(t) {
   if (!t) return null;
   const master = props_().getProperty('TOKEN');
-  if (master && t === master) return { name: 'Správce', buildings: null, edit: true };
+  if (master && t === master) return { name: 'Správce', buildings: null, editBuildings: null, edit: true, editAll: true };
   const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PEOPLE);
   if (!sh || sh.getLastRow() < 2) return null;
   const v = sh.getRange(1, 1, sh.getLastRow(), 5).getValues();
-  if (!v[0][3]) sh.getRange(1, 4).setValue('Budovy');
-  if (!v[0][4]) sh.getRange(1, 5).setValue('Oprávnění');
+  if (!v[0][3] || v[0][3] === 'Budovy') sh.getRange(1, 4).setValue('Vidí (budovy)');
+  if (!v[0][4] || v[0][4] === 'Oprávnění') sh.getRange(1, 5).setValue('Edituje (budovy)');
   const hit = v.slice(1).find(r => String(r[0]).trim() && r[1] && String(r[1]) === t);
   if (!hit) return null;
-  const list = String(hit[3] || '').split(/[,;\n]+/).map(normKey_).filter(Boolean);
-  return { name: String(hit[0]).trim(), buildings: list.length ? list : null, edit: !/^(vid|jen|cten|read|view|pouze)/.test(normKey_(hit[4])) };
+  const see = personList_(hit[3]), en = normKey_(hit[4]);
+  let editList = null; // null = všechny, které vidí
+  if (/^(nic|zadn|vid|jen|cten|read|view|pouze|ne$|-$)/.test(en)) editList = [];
+  else if (en && !/^(vse|vsech|edit|ano|all)/.test(en)) editList = personList_(hit[4]);
+  const buildings = see.length ? see : null;
+  return { name: String(hit[0]).trim(), buildings: buildings, editBuildings: editList, edit: editList === null || editList.length > 0, editAll: buildings === null && editList === null };
 }
 function who_(t) { const p = person_(t); return p ? p.name : ''; }
-function canSee_(p, m) {
-  if (!p || !p.buildings) return true;
-  return p.buildings.indexOf(normKey_(m.building)) >= 0 || (!!m.parent && p.buildings.indexOf(normKey_(m.parent)) >= 0);
-}
+function inList_(list, m) { return list.indexOf(normKey_(m.building)) >= 0 || (!!m.parent && list.indexOf(normKey_(m.parent)) >= 0); }
+function canSee_(p, m) { return !p || !p.buildings || inList_(p.buildings, m); }
+function canEdit_(p, m) { return !p || (canSee_(p, m) && (p.editBuildings === null || inList_(p.editBuildings, m))); }
 
 // přečte list jako tabulku podle názvů sloupců (pořadí sloupců není důležité)
 function table_(name) {
@@ -322,9 +328,9 @@ function doGet(e) {
     const lastAny = mine[0], lastVal = mine.find(x => x.has);
     // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
     const di = dueInfo_(m, lastVal);
-    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due };
+    return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m) };
   });
-  return ok_({ ok: true, who: who, edit: P.edit, meters: list });
+  return ok_({ ok: true, who: who, edit: P.edit, editAll: P.editAll, meters: list });
 }
 
 // Spusť jednou z editoru: vyvolá povolení externího připojení a ověří klíč Gemini.
@@ -386,8 +392,9 @@ function doPost(e) {
   if (!who) return ok_({ ok: false, error: 'token' });
   // kdo smí jen prohlížet, nic nezapisuje; ostatní vidí a zapisují jen měřidla svých budov
   const denied = () => ok_({ ok: false, error: 'forbidden' });
-  const mine = id => { const mm = meters_().find(m => m.id === id); return !mm || canSee_(P, mm); };
-  if (['read', 'adminCheck', 'placeUpload', 'backfill', 'paperUpload'].indexOf(body.action) >= 0 && (!P.edit || !mine(body.id))) return denied();
+  const mine = id => { const mm = meters_().find(m => m.id === id); return !mm || canEdit_(P, mm); };
+  if (['read', 'adminCheck', 'placeUpload', 'backfill'].indexOf(body.action) >= 0 && (!P.edit || !mine(body.id))) return denied();
+  if (body.action === 'paperUpload' && !P.editAll) return denied(); // arch se týká všech budov
   if (body.action === 'read') return ok_(readWithAi_(meters_().find(m => m.id === body.id), body.photo));
   if (body.action === 'adminCheck') return ok_(adminCheck_(body.pin));
   if (body.action === 'placeUpload') return ok_(placeUpload_(body));
@@ -395,7 +402,7 @@ function doPost(e) {
   if (body.action === 'paperUpload') return ok_(paperUpload_(body));
 
   const meter = meters_().find(m => m.id === body.id);
-  if (!P.edit || (meter && !canSee_(P, meter))) return denied();
+  if (!P.edit || (meter && !canEdit_(P, meter))) return denied();
   let noValue = body.noValue === true || body.value === '' || body.value === null || body.value === undefined;
   let value = noValue ? NaN : (meter ? round_(Number(String(body.value).replace(',', '.')), meter.decimals) : Number(String(body.value).replace(',', '.')));
   if (!meter || (!noValue && !isFinite(value)) || (noValue && !body.photo)) return ok_({ ok: false, error: 'data' });
