@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.34.0';
+const SCRIPT_VERSION = '1.35.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -234,13 +234,22 @@ function findKey_(v, re) { return Object.keys(v).find(k => re.test(k)); }
 
 function round_(x, d) { const f = Math.pow(10, d); return Math.round(x * f) / f; }
 
+// seznam měřidel se v rámci jednoho požadavku (doGet / doPost) čte z tabulky jen jednou
+let MEMO_ON_ = false, METERS_MEMO_ = null, MISSING_IDS_ = false;
 function meters_() {
+  if (MEMO_ON_ && METERS_MEMO_) return METERS_MEMO_;
+  const r = metersRead_();
+  if (MEMO_ON_) METERS_MEMO_ = r;
+  return r;
+}
+function metersRead_() {
   const types = {};
   const tt = table_(SHEET_TYPES);
   if (tt) tt.rows.forEach(r => { const k = String(r.v['typ'] || '').trim().toLowerCase(); if (k) types[k] = r.v; });
   const mt = table_(SHEET_METERS);
   const num = x => Number(x) > 0 ? Math.round(Number(x)) : 0;
   const seen = {}, B = buildings_();
+  MISSING_IDS_ = mt.rows.some(r => !String(r.v['id'] || '').trim() && (String(r.v['název'] || '').trim() || String(r.v['typ'] || '').trim()));
   return mt.rows.filter(r => String(r.v['id'] || '').trim()).map(r => {
     const v = r.v, typeName = String(v['typ'] || '').trim(), t = types[typeName.toLowerCase()] || {};
     // stejné id u dvou měřidel by slilo jejich historii: druhé a další dostane příponu
@@ -306,6 +315,7 @@ function weekStart_() {
 
 // ---------- seznam měřidel pro aplikaci ----------
 function doGet(e) {
+  MEMO_ON_ = true; METERS_MEMO_ = null; const T0 = Date.now();
   if (e.parameter.action === 'version') return ok_({ ok: true, version: SCRIPT_VERSION, env: props_().getProperty('ENV') === 'test' ? 'test' : 'prod' });
   if (e.parameter.action === 'form') return formPage_(e.parameter.rid, e.parameter.key);
   const P = person_(e.parameter.token), who = P ? P.name : '';
@@ -315,14 +325,15 @@ function doGet(e) {
     if (!hm || !canSee_(P, hm)) return ok_({ ok: false, error: 'forbidden' });
     const rows = readings_().filter(x => x.id === e.parameter.id && x.has).sort((a, b) => a.time - b.time).slice(-800);
     const pend = readings_().filter(x => x.id === e.parameter.id && !x.has).sort((a, b) => a.time - b.time).slice(-20);
-    return ok_({ ok: true, me: who, readings: rows.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), pending: pend.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })), prices: pricesFor_((meters_().find(m => m.id === e.parameter.id) || {}).typeName) });
+    return ok_({ ok: true, ms: Date.now() - T0, me: who, readings: rows.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), value: x.value, who: x.who, src: x.src, pid: driveId_(x.photo) })), pending: pend.map(x => ({ rid: x.rid || 'row-' + x.row, time: x.time.toISOString(), who: x.who, pid: driveId_(x.photo) })), prices: pricesFor_((meters_().find(m => m.id === e.parameter.id) || {}).typeName) });
   }
   if (e.parameter.action === 'rphoto') return ok_(recordImage_(e.parameter.f, P));
   if (e.parameter.action === 'place') {
     const mm = meters_().find(x => x.id === e.parameter.id);
     return ok_(mm && mm.placePhoto && canSee_(P, mm) ? placeImage_(mm.placePhoto) : { ok: false, error: 'none' });
   }
-  fillIds_();
+  meters_();
+  if (MISSING_IDS_) { fillIds_(); METERS_MEMO_ = null; } // doplnění id jen když nějaké chybí
   const all = readings_();
   const locks = lockedMap_(meters_().map(m => m.id), who);
   const list = meters_().filter(m => canSee_(P, m)).map(m => {
@@ -332,7 +343,7 @@ function doGet(e) {
     const di = dueInfo_(m, lastVal);
     return { ...m, last: lastVal ? { value: lastVal.value, time: lastVal.time.toISOString(), who: lastVal.who } : null, pending: !!lastAny && !lastAny.has, due: di.due, overdueDays: di.overdueDays, remainingDays: di.remainingDays, doneThisWeek: !di.due, editable: canEdit_(P, m), lockedBy: locks[m.id] || '' };
   });
-  return ok_({ ok: true, who: who, edit: P.edit, editAll: P.editAll, meters: list });
+  return ok_({ ok: true, ms: Date.now() - T0, who: who, edit: P.edit, editAll: P.editAll, meters: list });
 }
 
 // Spusť jednou z editoru: vyvolá povolení externího připojení a ověří klíč Gemini.
@@ -388,6 +399,7 @@ function readWithAi_(meter, b64) {
 // ---------- příjem odečtu ----------
 // tělo (JSON jako text): { token, id, value, note, source, photo: "<base64 jpeg>" }
 function doPost(e) {
+  MEMO_ON_ = true; METERS_MEMO_ = null;
   let body;
   try { body = JSON.parse(e.postData.contents); } catch (err) { return ok_({ ok: false, error: 'json' }); }
   const P = person_(body.token), who = P ? P.name : '';
@@ -430,8 +442,9 @@ function doPost(e) {
   lock.waitLock(20000);
   try {
     const sheet = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS);
-    if (body.clientId && readings_().some(x => x.rid === rid)) return ok_({ ok: true, dup: true });
-    const prev = readings_().filter(x => x.id === meter.id && x.has && x.time <= when).sort((a, b) => b.time - a.time)[0];
+    const allR = readings_();
+    if (body.clientId && allR.some(x => x.rid === rid)) return ok_({ ok: true, dup: true });
+    const prev = allR.filter(x => x.id === meter.id && x.has && x.time <= when).sort((a, b) => b.time - a.time)[0];
     const diff = (!noValue && prev) ? Math.round((value - prev.value) * 1000) / 1000 : '';
     let note = (aiNote + ' ' + String(body.note || '')).trim().slice(0, 300);
     if (!noValue && prev && value < prev.value) note = ('POZOR: nižší než minule. ' + note).trim();
@@ -604,6 +617,7 @@ function placeUpload_(body) {
     let col = head.findIndex(x => /^(fotka|plánek)[_ ]?místa/i.test(String(x).trim()));
     if (col < 0) { col = head.findIndex(x => String(x).trim() === ''); if (col < 0) col = head.length; sh.getRange(1, col + 1).setValue('Fotka_místa'); }
     sh.getRange(meter.row, col + 1).setValue(name);
+    METERS_MEMO_ = null;
     return { ok: true, name: name };
   } finally {
     lock.releaseLock();

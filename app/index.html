@@ -221,7 +221,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div id="envbar" class="hide">🧪 TESTOVACÍ VERZE · jiná tabulka než ostrý provoz</div>
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
-<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
+<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span><span class="note" id="vms"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
 <div class="hero" id="hero"><div class="hi" id="who"></div><div class="adminbar hide" id="adminbar"><span>🔓 Režim admin je otevřený</span><button type="button" id="adminclose">Zavřít ✕</button></div></div>
 <div class="fbox" id="fbox">
 <button type="button" class="fhead" id="fhead" aria-expanded="true"><span id="ftitle">Filtry</span><span id="fcol" aria-hidden="true">▴</span></button>
@@ -338,7 +338,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.40.1';
+const VERSION = '1.41.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -496,12 +496,16 @@ function renderAll(noAnim) {
     '<span class="s">' + (m.place ? m.place + ' · ' : '') + (m.last ? 'minule ' + fmtNum(m.last.value) + ' ' + (m.unit || '') + ' · ' + fmtDate(m.last.time) + (m.last.who ? ', ' + m.last.who : '') : 'zatím bez odečtu') + '</span>' +
     (m.lockedBy ? '<span class="s warn">🔒 právě zapisuje ' + m.lockedBy.replace(/</g, '&lt;') + '</span>' : '') + (queuedIds.has(m.id) ? '<span class="s warn">⏳ čeká na odeslání (uloženo v telefonu)</span>' : '') + (m.pending ? '<span class="s warn">fotka čeká na doplnění hodnoty</span>' : '') + '<span class="s lastrow"><span>' + (isDue(m) ? '' : 'další odečet za ' + days(m.remainingDays || 0) + ' · ') + 'interval ' + days(m.interval || 7) + '</span>' + chipFor(m) + '</span></span></button>').join('');
 }
+let lastLoad = 0;
 async function loadList() {
   if (!ENDPOINT) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Testovací verze zatím není propojená s testovací tabulkou (chybí adresa testovacího skriptu). Ostrá data se nepoužívají.</span>'; return; }
   if (!token()) { $('list').innerHTML = ''; $('homenote').innerHTML = '<span class="warn">Chybí tajný kód. Otevři appku přes odkaz, který ti poslali.</span>'; return; }
   $('homenote').textContent = 'Načítám…';
   try {
+    const t0 = performance.now();
     const r = await api('?token=' + encodeURIComponent(token()));
+    lastLoad = Date.now();
+    if (ENV === 'test' && r.ms !== undefined) $('vms').textContent = ' · seznam: skript ' + r.ms + ' ms, celkem ' + Math.round(performance.now() - t0) + ' ms';
     if (!r.ok) { $('homenote').innerHTML = '<span class="warn">Odkaz není platný. Požádej o nový.</span>'; return; }
     meters = r.meters; lsSet('meridla.meters', JSON.stringify(meters)); lsSet('meridla.who', r.who || ''); canEdit = r.edit !== false; canEditAll = r.editAll !== false; lsSet('meridla.edit', canEdit ? '1' : '0'); lsSet('meridla.editall', canEditAll ? '1' : '0'); showWho(); $('homenote').textContent = '';
   } catch (e) {
@@ -1183,6 +1187,7 @@ $('ver').textContent = 'verze ' + VERSION + (ENV === 'test' ? ' · TEST' : '');
 // číslo verze skriptu v Googlu (ověření, že běží správný kód); starší skript číslo nezná
 (async () => {
   if (!ENDPOINT) return;
+  await new Promise(r => setTimeout(r, 3500));
   try {
     const j = await (await fetch(ENDPOINT + '?action=version', { redirect: 'follow' })).json();
     $('ver').textContent = 'verze ' + VERSION + (ENV === 'test' ? ' · TEST' : '') + (j && j.version ? ' · skript ' + j.version : ' · skript starší');
@@ -1205,7 +1210,7 @@ if ('serviceWorker' in navigator) {
     if (reg.waiting && navigator.serviceWorker.controller) offer(reg.waiting);
     reg.addEventListener('updatefound', () => { const w = reg.installing; w.addEventListener('statechange', () => { if (w.state === 'installed' && navigator.serviceWorker.controller) offer(w); }); });
     reg.update().catch(() => {});
-    document.addEventListener('visibilitychange', () => { if (!document.hidden) { reg.update().catch(() => {}); flushQueue(); loadList(); } });
+    document.addEventListener('visibilitychange', () => { if (!document.hidden) { reg.update().catch(() => {}); flushQueue(); if (Date.now() - lastLoad > 60000) loadList(); } });
   }).catch(() => {});
   let reloaded = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => { if (reloaded) return; reloaded = true; location.reload(); });
@@ -1214,10 +1219,12 @@ if ('serviceWorker' in navigator) {
 const SPLASH_MIN = 2000, splashStart = Date.now();
 function hideSplash() { const s = $('splash'); if (!s || s.classList.contains('out')) return; s.classList.add('out'); setTimeout(() => s.remove(), 800); }
 // poslední známý seznam se ukáže hned, čerstvý se dotáhne na pozadí
-try { const c = JSON.parse(lsGet('meridla.meters') || '[]'); if (c.length) { meters = c; showWho(); renderAll(); $('homenote').textContent = 'Aktualizuji…'; } } catch (e) {}
+let shownFromCache = false;
+try { const c = JSON.parse(lsGet('meridla.meters') || '[]'); if (c.length) { meters = c; shownFromCache = true; showWho(); applyEdit(); renderAll(); $('homenote').textContent = 'Aktualizuji…'; } } catch (e) {}
 const loading = loadList().catch(() => {}).then(() => { const t = $('ssub'); if (t) t.textContent = 'Hotovo ✓'; });
 showQueue(); flushQueue();
 loading.then(() => setTimeout(hideSplash, Math.max(350, SPLASH_MIN - (Date.now() - splashStart))));
+if (shownFromCache) setTimeout(hideSplash, 900); // seznam z paměti je už vidět, čerstvý se dotáhne na pozadí
 setTimeout(hideSplash, 8000);
 </script>
 </body>
