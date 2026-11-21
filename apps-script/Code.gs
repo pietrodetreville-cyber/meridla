@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.41.1';
+const SCRIPT_VERSION = '1.41.2';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -139,10 +139,12 @@ function formatMeterRows_() {
     sh.setConditionalFormatRules(keep.concat([mk(fGreen, '#d9ead3'), mk(fYellow, '#fff2cc')]));
   } catch (e) { Logger.log('Obarvení měřidel: ' + e.message); }
 }
+// smaže mezipaměť skriptu (seznam měřidel, souhrny, historie), aby se ruční úpravy v tabulce projevily v aplikaci hned
+function clearAppCache() { bustAll_(); try { SpreadsheetApp.getActive().toast('Mezipaměť je vymazaná, změny v tabulce se projeví v aplikaci hned.', 'Hotovo', 6); } catch (e) {} }
 function formatMeterRows() { formatMeterRows_(); try { SpreadsheetApp.getActive().toast('Měřidla jsou obarvená: zelená = dodavatel, žlutá = interní.', 'Hotovo', 6); } catch (e) {} }
 function onOpen() {
   ensureSupplierCol_(); formatMeterRows_();
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obnovit data v aplikaci (vymazat mezipaměť)', 'clearAppCache').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -939,6 +941,9 @@ function checkMeters() {
     odd.forEach(r => problems.push('řádek ' + r.row + ': ve sloupci Dodavatel je "' + r.v[sk] + '" (platí jen "ano", jinak nech prázdné)'));
     info = '\n\nPod plombou dodavatele: ' + yes.length + ' z ' + ids.length + ' měřidel, interních: ' + (ids.length - yes.length - odd.length) + '.';
   }
+  // režim termínu: bez intervalu = poslední den v měsíci, s vyplněným intervalem = denní rytmus
+  const ivAll = mt.rows.filter(r => String(r.v['id'] || '').trim()), ivOwn = ivAll.filter(r => Number(r.v['interval (dny)'] || r.v['interval']) > 0);
+  info += '\n\nTermín odečtu: měsíčně (poslední den v měsíci) u ' + (ivAll.length - ivOwn.length) + ' měřidel, podle vlastního intervalu u ' + ivOwn.length + (ivOwn.length ? ' (řádky ' + ivOwn.slice(0, 12).map(r => r.row).join(', ') + (ivOwn.length > 12 ? ', …' : '') + ')' : '') + '.';
   SpreadsheetApp.getUi().alert((problems.length ? 'Nalezeno ' + problems.length + ' problémů:\n\n' + problems.join('\n') : 'Všechna měřidla jsou v pořádku (' + total + ').') + info);
 }
 
