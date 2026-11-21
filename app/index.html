@@ -63,7 +63,9 @@ img.shot{width:100%;border-radius:10px;display:block}
 .linkbtn{display:block;margin:12px auto 0;background:transparent;color:var(--mut);padding:8px 12px;font-weight:500;font-size:.85rem}
 #edov{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
 #edov.hide{display:none}
-#edov .card{width:100%;max-width:380px;margin:0}
+#edov .card{width:100%;max-width:380px;margin:0;max-height:92vh;overflow:auto}
+#edimg{display:block;width:100%;max-height:38vh;object-fit:contain;background:#0001;border-radius:10px;margin:2px 0 6px;cursor:zoom-in}
+#edimg.hide{display:none}
 .pendbox{background:#c2312a14;border:1px solid #c2312a44;border-radius:10px;padding:8px 10px;margin:8px 0;font-size:.85rem}
 .pendbox a{color:var(--acc);text-decoration:none;font-weight:600}
 #pinov{position:fixed;inset:0;z-index:70;background:#000a;display:flex;align-items:center;justify-content:center;padding:20px}
@@ -78,7 +80,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 .callout.link:active{background:#2563eb33}
 #lbstat{position:absolute;color:#fff;font-weight:600;text-align:center;padding:20px}
 #lbstat .spin{display:block;margin:0 auto 12px}
-#lb{position:fixed;inset:0;z-index:60;background:#000e;display:flex;align-items:center;justify-content:center;padding:10px}
+#lb{position:fixed;inset:0;z-index:80;background:#000e;display:flex;align-items:center;justify-content:center;padding:10px}
 #lb.hide{display:none}
 #lb img{max-width:100%;max-height:100%;object-fit:contain;border-radius:8px}
 .meter .s.lastrow{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:3px}
@@ -319,6 +321,8 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div id="edov" class="hide"><div class="card">
   <strong id="edtitle">Upravit záznam</strong>
   <div class="note" id="edinfo" style="margin:4px 0 8px"></div>
+  <img id="edimg" class="hide" alt="Fotka záznamu" title="Klepnutím zvětšíš">
+  <div class="note" id="edimgst"></div>
   <label for="edval">Stav měřidla</label><input id="edval" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 12345,6">
   <label for="ednote">Poznámka (nepovinná)</label><input id="ednote" type="text" autocomplete="off">
   <div class="note warn" id="edmsg" style="min-height:1.2em;margin-top:6px"></div>
@@ -338,7 +342,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.41.0';
+const VERSION = '1.42.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -843,8 +847,23 @@ function openEditor(rid) {
   $('edval').value = has ? String(x.v).replace('.', ',') : ''; $('ednote').value = '';
   $('edinfo').textContent = adm && !ownRec(x) ? 'Jako admin můžeš záznam upravit kdykoli.' : 'Svůj záznam můžeš upravit do 24 hodin od odečtu.';
   $('edadmin').classList.toggle('hide', !adm); $('edai').classList.toggle('hide', !(adm && x.pid));
-  $('edmsg').textContent = ''; $('edov').classList.remove('hide'); setTimeout(() => $('edval').focus(), 50);
+  $('edmsg').textContent = ''; $('edov').classList.remove('hide');
+  // fotka záznamu pro kontrolu hodnoty
+  const im = $('edimg'), st = $('edimgst'); im.classList.add('hide'); im.removeAttribute('src'); st.textContent = '';
+  if (x.pid) {
+    st.innerHTML = '<span class="spin sm"></span>Načítám fotku…';
+    getRecPhoto(x.pid).then(d => { if (edRec && edRec.rid === x.rid) { im.src = d; im.classList.remove('hide'); st.textContent = ''; } })
+      .catch(() => { if (edRec && edRec.rid === x.rid) st.textContent = 'Fotku se nepodařilo načíst.'; });
+  }
+  setTimeout(() => $('edval').focus(), 50);
 }
+async function getRecPhoto(pid) {
+  if (recMem[pid]) return recMem[pid];
+  const r = await api('?token=' + encodeURIComponent(token()) + '&action=rphoto&f=' + encodeURIComponent(pid));
+  if (!r.ok) throw new Error(r.error || 'fail');
+  return (recMem[pid] = 'data:' + r.mime + ';base64,' + r.data);
+}
+$('edimg').onclick = () => { if (edRec && edRec.pid) showRecordPhoto(edRec.pid, ''); };
 function editError(r) {
   if (r.error === 'pin' || r.error === 'locked' || r.error === 'nopin') { if (r.error !== 'nopin') adminLock(); return adminError(r.error); }
   return r.error === 'expired' ? 'Uplynulo 24 hodin, úpravu může udělat správce.' : r.error === 'forbidden' ? 'K tomuto záznamu nemáš oprávnění.' : r.error === 'data' ? 'Zadej stav jako číslo.' :
