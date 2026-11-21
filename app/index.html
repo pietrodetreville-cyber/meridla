@@ -151,6 +151,11 @@ html:has(#splash:not(.out)){overflow:hidden}
 .fbox .sfield{background:transparent;border:0;border-radius:0;box-shadow:none;padding:0 2px}
 .fbox .sfield:focus-within{box-shadow:none}
 .fbar{margin:0}
+.fsum{display:none;font-size:.78rem;color:var(--mut);padding:0 4px 5px}
+.fbox.col .fsum{display:block}
+.fbox.col .fbar{display:none}
+.fbox.col .sfind{border-bottom:0;margin-bottom:0;padding-bottom:2px}
+#fcol{font-size:.9rem}
 .fbar.hide{display:none}
 .frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:5px;padding:2px 0 5px}
 .frow.t{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
@@ -213,9 +218,10 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div class="hero" id="hero"><div class="hi" id="who"></div></div>
 <div class="fbox" id="fbox">
 <div class="sfind" id="sbar">
-  <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat měřidlo…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button></div>
+  <div class="sfield"><span aria-hidden="true">🔍</span><span class="bpill hide" id="bpill"></span><input id="q" type="search" placeholder="Hledat měřidlo…" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"><button class="hide" id="qclear" type="button" aria-label="Smazat hledání">✕</button><button id="fcol" type="button" aria-label="Sbalit filtry" title="Sbalit / rozbalit filtry">▴</button></div>
   <div class="sugg hide" id="sugg"></div>
 </div>
+<div class="fsum" id="fsum"></div>
 <div class="fbar hide" id="fbar"></div>
 </div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong id="updtxt">Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
@@ -316,7 +322,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.34.0';
+const VERSION = '1.35.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -443,7 +449,13 @@ function renderChips() {
   }
   bar.innerHTML = h;
   bar._types = types;
+  const parts = []; if (building) parts.push(building); if (typeF) parts.push(typeF); if (onlyDue) parts.push('K odečtu');
+  const n = visible().length;
+  $('fsum').textContent = 'Filtr: ' + (parts.length ? parts.join(' · ') : 'vše') + ' · ' + n + ' ' + plural(n, 'měřidlo', 'měřidla', 'měřidel');
 }
+function applyCol() { const c = lsGet('meridla.fcol') === '1'; $('fbox').classList.toggle('col', c); $('fcol').textContent = c ? '▾' : '▴'; $('fcol').setAttribute('aria-label', c ? 'Rozbalit filtry' : 'Sbalit filtry'); }
+$('fcol').onclick = () => { lsSet('meridla.fcol', lsGet('meridla.fcol') === '1' ? '' : '1'); applyCol(); };
+applyCol();
 $('fbar').addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.fb !== undefined) setBuilding(b.dataset.fb);
