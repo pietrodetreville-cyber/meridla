@@ -147,12 +147,12 @@ html:has(#splash:not(.out)){overflow:hidden}
 .noanim .meter{animation:none}
 .fbar{margin:0 0 8px}
 .fbar.hide{display:none}
-.frow{display:flex;gap:6px;overflow-x:auto;padding:2px 0 6px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
-.frow::-webkit-scrollbar{display:none}
-.fchip{flex:none;display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:6px 12px;font-size:.85rem;font-weight:700;border:1px solid var(--line);background:var(--pop);color:var(--fg);white-space:nowrap}
+.frow{display:grid;grid-template-columns:repeat(auto-fit,minmax(68px,1fr));gap:5px;padding:2px 0 5px}
+.frow.t{grid-template-columns:repeat(auto-fit,minmax(104px,1fr))}
+.fchip{display:inline-flex;align-items:center;justify-content:center;gap:4px;border-radius:999px;padding:5px 9px;font-size:.82rem;font-weight:700;border:1px solid var(--line);background:var(--pop);color:var(--fg);white-space:nowrap}
 .fchip.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
-.fchip .fn{display:inline-grid;place-items:center;min-width:18px;height:18px;padding:0 5px;border-radius:99px;background:var(--warn);color:#fff;font-size:.7rem;font-weight:800}
-.fchip.sm{font-weight:600;padding:5px 10px;font-size:.8rem}
+.fchip .fn{display:inline-grid;place-items:center;min-width:16px;height:16px;padding:0 4px;border-radius:99px;background:var(--warn);color:#fff;font-size:.7rem;font-weight:800}
+.fchip.sm{font-weight:600;padding:4px 8px;font-size:.78rem}
 .sugg .none{padding:12px 10px;color:var(--mut);font-size:.9rem}
 .tag{display:inline-block;font-size:.72rem;font-weight:800;padding:1px 6px;margin-right:4px;border-radius:6px;background:#66728230;color:var(--fg);vertical-align:1px}
 .chip.late{background:var(--warn);color:#fff}
@@ -308,7 +308,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.33.0';
+const VERSION = '1.33.2';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -429,7 +429,7 @@ function renderChips() {
   bs.forEach(b => { h += chip(building === b, esc(b), badgeN(meters.filter(m => inB(m, b))), 'data-fb="' + esc(b) + '"'); });
   h += '</div>';
   if (types.length > 1 || onlyDue) {
-    h += '<div class="frow">' + chip(onlyDue, '⏰ K odečtu', onlyDue ? 0 : badgeN(inb), 'data-fd="1"', true);
+    h += '<div class="frow t">' + chip(onlyDue, '⏰ K odečtu', onlyDue ? 0 : badgeN(inb), 'data-fd="1"', true);
     if (types.length > 1) types.forEach((x, i) => { h += chip(typeF === x.t, x.i + ' ' + esc(x.t), 0, 'data-ft="' + i + '"', true); });
     h += '</div>';
   }
