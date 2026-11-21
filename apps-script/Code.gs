@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.37.1';
+const SCRIPT_VERSION = '1.38.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -117,9 +117,30 @@ function ensureSupplierCol_() {
     if (!head.some(h => /^(dodavatel|plomb)/.test(h))) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Dodavatel (plomba)'); bustMeters_(); }
   } catch (e) {}
 }
+// podmíněné formátování listu Měřidla: zelený řádek = pod plombou dodavatele ("ano"), žlutý = interní (prázdné pole). Prázdné řádky bez id se nebarví.
+// Pravidla se ukládají podle písmena sloupce, po přesunu sloupce Dodavatel (plomba) stačí spustit menu Měřidla -> Obarvit měřidla znovu.
+function formatMeterRows_() {
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS);
+    if (!sh || sh.getLastColumn() < 1) return;
+    const lastCol = sh.getLastColumn(), head = sh.getRange(1, 1, 1, lastCol).getValues()[0].map(h => String(h).normalize('NFC').trim().toLowerCase());
+    const ci = head.findIndex(h => /^(dodavatel|plomb)/.test(h)), ii = head.indexOf('id');
+    if (ci < 0 || ii < 0) return;
+    const letter = n => { let t = '', x = n; while (x > 0) { const m = (x - 1) % 26; t = String.fromCharCode(65 + m) + t; x = Math.floor((x - 1) / 26); } return t; };
+    const sup = '$' + letter(ci + 1) + '2', idc = '$' + letter(ii + 1) + '2';
+    const fGreen = '=' + sup + '="ano"', fYellow = '=(' + idc + '<>"")*(' + sup + '="")';
+    const range = sh.getRange(2, 1, Math.max(sh.getMaxRows() - 1, 1), lastCol);
+    // vlastní pravidla se poznají podle barvy a typu (vlastní vzorec); cizí pravidla zůstanou
+    const isOurs = r => { try { const c = r.getBooleanCondition(); return !!c && c.getCriteriaType() === SpreadsheetApp.BooleanCriteria.CUSTOM_FORMULA && (c.getBackground() === '#d9ead3' || c.getBackground() === '#fff2cc'); } catch (e) { return false; } };
+    const keep = sh.getConditionalFormatRules().filter(r => !isOurs(r));
+    const mk = (f, bg) => SpreadsheetApp.newConditionalFormatRule().whenFormulaSatisfied(f).setBackground(bg).setRanges([range]).build();
+    sh.setConditionalFormatRules(keep.concat([mk(fGreen, '#d9ead3'), mk(fYellow, '#fff2cc')]));
+  } catch (e) { Logger.log('Obarvení měřidel: ' + e.message); }
+}
+function formatMeterRows() { formatMeterRows_(); try { SpreadsheetApp.getActive().toast('Měřidla jsou obarvená: zelená = dodavatel, žlutá = interní.', 'Hotovo', 6); } catch (e) {} }
 function onOpen() {
-  ensureSupplierCol_();
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  ensureSupplierCol_(); formatMeterRows_();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
