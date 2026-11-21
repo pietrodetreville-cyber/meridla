@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.37.0';
+const SCRIPT_VERSION = '1.37.1';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -108,7 +108,17 @@ function setup() {
   Logger.log('Složka s fotkami: ' + DriveApp.getFolderById(props.getProperty('FOLDER_ID')).getUrl());
 }
 
+// sloupec "Dodavatel (plomba)" v listu Měřidla (ano = pod plombou dodavatele, prázdné = interní); založí se při otevření tabulky
+function ensureSupplierCol_() {
+  try {
+    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_METERS);
+    if (!sh || sh.getLastColumn() < 1) return;
+    const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).normalize('NFC').trim().toLowerCase());
+    if (!head.some(h => /^(dodavatel|plomb)/.test(h))) { sh.getRange(1, sh.getLastColumn() + 1).setValue('Dodavatel (plomba)'); bustMeters_(); }
+  } catch (e) {}
+}
 function onOpen() {
+  ensureSupplierCol_();
   SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
@@ -275,9 +285,7 @@ function metersRead_() {
   const num = x => Number(x) > 0 ? Math.round(Number(x)) : 0;
   const seen = {}, B = buildings_();
   // sloupec "Dodavatel (plomba)" se při prvním čtení doplní do hlavičky listu Měřidla (ano = pod plombou dodavatele, prázdné = interní měřidlo)
-  if (mt.sheet && !Object.keys((mt.rows[0] || { v: {} }).v).some(k => /^(dodavatel|plomb)/.test(k)) && mt.sheet.getLastColumn() > 0) {
-    try { mt.sheet.getRange(1, mt.sheet.getLastColumn() + 1).setValue('Dodavatel (plomba)'); } catch (e) {}
-  }
+  if (mt.sheet && !Object.keys((mt.rows[0] || { v: {} }).v).some(k => /^(dodavatel|plomb)/.test(k))) ensureSupplierCol_();
   MISSING_IDS_ = mt.rows.some(r => !String(r.v['id'] || '').trim() && (String(r.v['název'] || '').trim() || String(r.v['typ'] || '').trim()));
   return mt.rows.filter(r => String(r.v['id'] || '').trim()).map(r => {
     const v = r.v, typeName = String(v['typ'] || '').trim(), t = types[typeName.toLowerCase()] || {};
