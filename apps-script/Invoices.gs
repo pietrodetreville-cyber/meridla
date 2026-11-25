@@ -83,8 +83,14 @@ function invUiRegisterCore_(d) {
       if (same) return { ok: false, dup: true, error: 'Faktura ' + invNo + ' od ' + d.vendor + ' už je zaregistrovaná jako ' + (same[COL_DNUM - 1] || same[9]) + '.' };
     }
     let f; try { f = DriveApp.getFileById(String(d.id)); } catch (e) { return { ok: false, error: 'PDF se nepodařilo najít na Disku.' }; }
+    // jen PDF ze složky Došlé faktury tohoto prostředí (test a ostrá nesmí sdílet jeden soubor) a ještě nezaregistrované
+    const inbox = invInbox_().getId(), parents = f.getParents(); let inInbox = false;
+    while (parents.hasNext()) if (parents.next().getId() === inbox) inInbox = true;
+    if (!inInbox) return { ok: false, error: 'Toto PDF není ve složce Došlé faktury ' + (isTest_() ? 'TESTU' : 'OSTRÉ verze') + '. Nahraj fakturu znovu do správné složky (stejný soubor nepoužívej v testu i na ostré).' };
+    const fid = f.getId(), used = rows.find(r => String(r[7] || '').indexOf(fid) >= 0);
+    if (used) return { ok: false, error: 'Tento soubor už je zaregistrovaný jako ' + (used[COL_DNUM - 1] || used[9]) + '.' };
     const num = nextDocNum_(sh, duzp || issued), rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10), orig = f.getName();
-    f.setName(num + '.pdf');
+    f.setName(num + (isTest_() ? ' TEST' : '') + '.pdf');
     try { f.moveTo(child_(driveRoot_(), DOCS_FOLDER)); } catch (e) {}
     const who = Session.getActiveUser().getEmail() || 'správce';
     const note = [String(d.note || '').trim(), 'soubor: ' + orig].filter(Boolean).join(' · ');
@@ -92,6 +98,6 @@ function invUiRegisterCore_(d) {
     const row = sh.getLastRow();
     sh.getRange(row, COL_DSEL).insertCheckboxes();
     setPhotoLink_(sh, row, 8, '📄 ' + num, f.getUrl());
-    return { ok: true, num: num, name: num + '.pdf' };
+    return { ok: true, num: num, name: f.getName() };
   } finally { lock.releaseLock(); }
 }

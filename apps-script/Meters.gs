@@ -4,7 +4,8 @@
 // Přesun se dělá jednou z menu Administrace → Přesunout měřidla do samostatné tabulky. Do té doby se vše čte z Administrace jako dřív.
 // ID souboru měřidel je ve vlastnosti skriptu METERS_SS. Původní listy zůstanou v Administraci skryté jako záloha (nic se nemaže).
 
-function envSuffix_() { return props_().getProperty('ENV') === 'test' ? ' – TEST' : ''; }
+function isTest_() { return props_().getProperty('ENV') === 'test'; }
+function envSuffix_() { return isTest_() ? ' – TEST' : ''; }
 function metersFileName_() { return 'Měřidla SVJ Od Vysoké' + envSuffix_(); }
 function adminFileName_() { return 'Administrace SVJ Od Vysoké' + envSuffix_(); }
 
