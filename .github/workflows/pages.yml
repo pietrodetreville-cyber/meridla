@@ -36,13 +36,13 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Stažení větve main (ostrá verze)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: main
           path: _site
 
       - name: Stažení větve test (testovací verze)
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           ref: test
           path: _test
@@ -55,11 +55,11 @@ jobs:
           # testovací verze má jiný název, aby se při instalaci nepletla s ostrou
           sed -i 's/"name": "[^"]*"/"name": "Fotoapp SVJ – TEST"/; s/"short_name": "[^"]*"/"short_name": "SVJ TEST"/; s/"theme_color": "[^"]*"/"theme_color": "#b45309"/' _site/test/app/manifest.webmanifest
 
-      - uses: actions/configure-pages@v5
+      - uses: actions/configure-pages@v6
 
-      - uses: actions/upload-pages-artifact@v3
+      - uses: actions/upload-pages-artifact@v5
         with:
           path: _site
 
       - id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
