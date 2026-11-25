@@ -44,6 +44,25 @@ function openDocsFile() {
 }
 const DOCS_HEAD = ['Zapsáno', 'Datum dokladu', 'Částka (Kč)', 'Obchod / dodavatel', 'Účel', 'Budova', 'Kdo', 'Fotka', 'Stav', 'ID', 'Poznámka', 'Odesláno účetní', 'Vybrat k odeslání', 'Dávka', 'Zpráva pro účetní', 'Číslo dokladu'];
 const COL_DSEL = 13, COL_DBATCH = 14, COL_DMSG = 15, COL_DNUM = 16;
+// fotka v buňce: krátký text (📷 číslo dokladu) s odkazem místo dlouhé adresy
+function setPhotoLink_(sh, row, col, label, url) {
+  try { sh.getRange(row, col).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(label).setLinkUrl(url).build()); }
+  catch (e) { sh.getRange(row, col).setValue(url); }
+}
+// řádky listu Doklady od 2. řádku; ve sloupci Fotka (H) je vždy adresa fotky (z odkazu, nebo z textu u starých řádků)
+function docRows_(sh, width) {
+  const n = sh.getLastRow() - 1; if (n < 1) return [];
+  const v = sh.getRange(2, 1, n, width).getValues();
+  try { const rt = sh.getRange(2, 8, n, 1).getRichTextValues(); v.forEach((r, i) => { const u = rt[i] && rt[i][0] && rt[i][0].getLinkUrl(); if (u) r[7] = u; }); } catch (e) {}
+  return v;
+}
+// dřívější řádky s dlouhou adresou ve sloupci se převedou na krátký odkaz
+function linkifyPhotos_(sh, col, numCol) {
+  const n = sh.getLastRow() - 1; if (n < 1 || sh.getLastColumn() < col) return;
+  const v = sh.getRange(2, col, n, 1).getValues(), nums = numCol && sh.getLastColumn() >= numCol ? sh.getRange(2, numCol, n, 1).getValues() : null;
+  v.forEach((r, i) => { const t = String(r[0] || ''); if (/^https?:\/\//.test(t)) setPhotoLink_(sh, i + 2, col, '📷 ' + (nums && String(nums[i][0] || '').trim() ? String(nums[i][0]).trim() : 'fotka'), t); });
+}
+
 // číslo dokladu v interní evidenci: rrrr-mm-nnn (rok a měsíc z data dokladu, nnn = pořadí v tom měsíci)
 function docNumPrefix_(date) { return Utilities.formatDate(date, SpreadsheetApp.getActive().getSpreadsheetTimeZone(), 'yyyy-MM'); }
 function nextDocNum_(sh, date, taken) {
@@ -56,7 +75,7 @@ function nextDocNum_(sh, date, taken) {
 // dřívějším dokladům bez čísla se čísla přidělí podle data dokladu a jejich fotky se přejmenují
 function numberOldDocs_(sh) {
   if (sh.getLastRow() < 2) return;
-  const v = sh.getRange(2, 1, sh.getLastRow() - 1, COL_DNUM).getValues(), todo = [];
+  const v = docRows_(sh, COL_DNUM), todo = [];
   v.forEach((r, i) => { if (r[9] && !String(r[COL_DNUM - 1] || '').trim()) todo.push({ n: i + 2, r: r }); });
   todo.sort((a, b) => new Date(a.r[1]) - new Date(b.r[1]) || new Date(a.r[0]) - new Date(b.r[0]));
   const taken = [];
@@ -79,6 +98,7 @@ function docsSheet_() {
   }
   [[COL_DBATCH, 'Dávka'], [COL_DMSG, 'Zpráva pro účetní']].forEach(([c, n]) => { if (sh.getLastColumn() < c || !sh.getRange(1, c).getValue()) sh.getRange(1, c).setValue(n).setFontWeight('bold'); });
   if (sh.getLastColumn() < COL_DNUM || !sh.getRange(1, COL_DNUM).getValue()) { sh.getRange(1, COL_DNUM).setValue('Číslo dokladu').setFontWeight('bold'); numberOldDocs_(sh); }
+  linkifyPhotos_(sh, 8, COL_DNUM);
   if (sh.getLastColumn() < COL_DSEL || !sh.getRange(1, COL_DSEL).getValue()) {
     sh.getRange(1, COL_DSEL).setValue('Vybrat k odeslání').setFontWeight('bold');
     if (sh.getLastRow() > 1) sh.getRange(2, COL_DSEL, sh.getLastRow() - 1, 1).insertCheckboxes();
@@ -105,6 +125,7 @@ function receiptSave_(body, who) {
     const url = child_(driveRoot_(), DOCS_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', name)).getUrl();
     sh.appendRow([new Date(), date, amount, String(body.vendor || '').slice(0, 120), String(body.purpose).slice(0, 200), String(body.building || '').slice(0, 40), who, url, 'nový', rid, String(body.note || '').slice(0, 300), '', false, '', '', num]);
     sh.getRange(sh.getLastRow(), COL_DSEL).insertCheckboxes();
+    setPhotoLink_(sh, sh.getLastRow(), 8, '📷 ' + num, url);
     return { ok: true, rid: rid, num: num };
   } finally { lock.releaseLock(); }
 }
@@ -114,7 +135,7 @@ function receiptsList_(P) {
   const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
   if (!sh || sh.getLastRow() < 2) return { ok: true, items: [], accountant: !!props_().getProperty('ACCOUNTANT') };
   const all = !P || P.acc, n = sh.getLastRow() - 1;
-  const v = sh.getRange(2, 1, n, Math.max(COL_DNUM, 12)).getValues().filter(r => all || String(r[6]) === P.name).slice(-60);
+  const v = docRows_(sh, Math.max(COL_DNUM, 12)).filter(r => all || String(r[6]) === P.name).slice(-60);
   const iso = x => x && Object.prototype.toString.call(x) === '[object Date]' ? x.toISOString() : String(x || '');
   const items = v.filter(r => r[9]).map(r => ({ rid: String(r[9]), num: String(r[COL_DNUM - 1] || ''), date: iso(r[1]), amount: Number(r[2]), vendor: String(r[3] || ''), purpose: String(r[4] || ''), building: String(r[5] || ''), who: String(r[6] || ''), pid: driveId_(r[7]), status: String(r[8] || ''), sent: iso(r[11]) })).reverse();
   return { ok: true, items: items, total: n, accountant: !!props_().getProperty('ACCOUNTANT') };
@@ -194,7 +215,7 @@ function receiptsSendCore_(who, pick, message, extra) {
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
     const width = Math.max(DOCS_HEAD.length, sh.getLastColumn());
-    const v = sh.getRange(2, 1, sh.getLastRow() - 1, width).getValues(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+    const v = docRows_(sh, width), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
     const chosen = [], skipped = [];
     v.forEach((r, i) => { if (r[9] && pick(r)) (/^odesl/i.test(String(r[8] || '')) ? skipped : chosen).push({ n: i + 2, r: r }); });
     if (!chosen.length) return { ok: true, count: 0, skipped: skipped.length };
@@ -252,7 +273,12 @@ function invoicesAppend_(rows, stamp, batchId, msg) {
     [r[1], r[1], r[2], r[3], r[4], r[5], r[7], String(r[9]), stamp, r[10], batchId || '', msg || '', String(r[COL_DNUM - 1] || '')].forEach((val, k) => { row[ci[k]] = val; }); // DUZP = datum dokladu (lze přepsat)
     return row;
   });
-  if (out.length) sh.getRange(sh.getLastRow() + 1, 1, out.length, head.length).setValues(out);
+  if (out.length) {
+    const first = sh.getLastRow() + 1;
+    sh.getRange(first, 1, out.length, head.length).setValues(out);
+    out.forEach((row, j) => { const u = String(row[ci[6]] || ''); if (/^https?:/.test(u)) setPhotoLink_(sh, first + j, ci[6] + 1, '📷 ' + (row[ci[12]] || 'fotka'), u); });
+  }
+  linkifyPhotos_(sh, ci[6] + 1, ci[12] + 1);
   sortInvoices_(sh, ci[0]);
 }
 function sortInvoices_(sh, duzpIdx) {
