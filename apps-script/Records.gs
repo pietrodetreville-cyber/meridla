@@ -72,7 +72,7 @@ function applyValue_(sh, rec, meter, value, who, how, extraNote) {
 function editReading_(body, P, who) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
-    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS); ensureReadingCols_(sh);
+    const sh = sheet_(SHEET_READINGS); ensureReadingCols_(sh);
     const rec = findReading_(sh, body.rid);
     if (!rec) return { ok: false, error: 'nofile' };
     if (rec.r[COL_OUT - 1]) return { ok: false, error: 'excluded' };
@@ -105,7 +105,7 @@ function editReading_(body, P, who) {
 function excludeReading_(body, P, who) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
-    const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS); ensureReadingCols_(sh);
+    const sh = sheet_(SHEET_READINGS); ensureReadingCols_(sh);
     const rec = findReading_(sh, body.rid);
     if (!rec) return { ok: false, error: 'nofile' };
     const meter = meters_().find(m => m.id === String(rec.r[1]));
@@ -122,7 +122,7 @@ function excludeReading_(body, P, who) {
 
 // jen správce: znovu přečte hodnotu AI z uložené fotky záznamu
 function rereadReading_(body, P, who) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_READINGS); ensureReadingCols_(sh);
+  const sh = sheet_(SHEET_READINGS); ensureReadingCols_(sh);
   let rec = findReading_(sh, body.rid);
   if (!rec) return { ok: false, error: 'nofile' };
   if (rec.r[COL_OUT - 1]) return { ok: false, error: 'excluded' };
@@ -169,7 +169,7 @@ function lockedMap_(ids, who) {
 // Záznamy starší než 2 roky se přesunou do listu Odečty_archiv (nic se nemaže). U každého měřidla zůstane v Odečtech nejnovější
 // záznam z doby před hranicí, aby navazovaly přírůstky. V aplikaci se pak ukáže jen novější historie.
 function archiveOldReadings() {
-  const ui = SpreadsheetApp.getUi(), ss = SpreadsheetApp.getActive(), sh = ss.getSheetByName(SHEET_READINGS);
+  const ui = SpreadsheetApp.getUi(), ss = SpreadsheetApp.getActive(), sh = sheet_(SHEET_READINGS);
   const data = sh.getDataRange().getValues(), ncol = data[0].length, cut = new Date();
   cut.setMonth(cut.getMonth() - 24);
   const newest = {};

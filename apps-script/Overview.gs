@@ -1,24 +1,8 @@
-// ---------- přehled dokladů pro výbor: samostatná tabulka ve složce „dokumenty“ ----------
-// Kolegové z výboru nepotřebují přístup do SVJ_app: dostanou právo číst tuto tabulku a složku Doklady (kvůli odkazům na fotky / PDF).
+// ---------- přehled dokladů pro výbor: list „Přehled“ v souboru Doklady ----------
+// Kolegové z výboru nepotřebují přístup do Administrace ani k měřidlům: dostanou právo číst soubor Doklady a složku Doklady (kvůli odkazům na fotky / PDF).
 // Přehled se obnoví po uložení dokladu, registraci faktury a odeslání účetní; ručně menu Doklady → Obnovit přehled dokladů.
-
-const DASH_FOLDER = 'dokumenty';
-function dashFileName_() { return 'Přehled dokladů SVJ Od Vysoké' + (props_().getProperty('ENV') === 'test' ? ' – TEST' : ''); }
-function dashFolder_() {
-  const it = DriveApp.getRootFolder().getFoldersByName(DASH_FOLDER);
-  return it.hasNext() ? it.next() : DriveApp.getRootFolder().createFolder(DASH_FOLDER);
-}
-function dashSS_() {
-  const id = props_().getProperty('DASH_SS');
-  if (id) { try { return SpreadsheetApp.openById(id); } catch (e) {} }
-  const ss = SpreadsheetApp.create(dashFileName_());
-  try { DriveApp.getFileById(ss.getId()).moveTo(dashFolder_()); } catch (e) {}
-  props_().setProperty('DASH_SS', ss.getId());
-  ss.getSheets()[0].setName('Přehled');
-  ss.insertSheet('Doklady');
-  shareDash_(ss);
-  return ss;
-}
+// (Dřívější samostatný soubor „Přehled dokladů…“ ve složce dokumenty se už neaktualizuje; skript ho nemaže.)
+function dashSS_() { return docsSS_(); }
 
 // obnoví celý přehled z listu Doklady
 function dashRefresh_() {
@@ -45,33 +29,6 @@ function dashRefresh_() {
   };
   const band = (rg, headBg) => rg.applyRowBanding(SpreadsheetApp.BandingTheme.BLUE, true, false)
     .setHeaderRowColor(headBg).setFirstRowColor('#ffffff').setSecondRowColor('#f4f7fc');
-
-  // ---- list Doklady: všechny doklady s odkazem
-  const head = ['Číslo dokladu', 'Typ', 'Datum dokladu', 'DUZP', 'Částka (Kč)', 'Dodavatel', 'Účel', 'Budova', 'Číslo faktury', 'Splatnost', 'Zapsal(a)', 'Stav', 'Odesláno účetní', 'Dávka', 'Zpráva pro účetní', 'Doklad'];
-  const sh = ss.getSheetByName('Doklady') || ss.insertSheet('Doklady');
-  wipe(sh);
-  sh.setHiddenGridlines(true);
-  const data = rows.map(r => [num(r), String(r[COL_DTYPE - 1] || 'paragon'), isD(r[1]) ? r[1] : '', isD(r[COL_DDUZP - 1]) ? r[COL_DDUZP - 1] : '', Number(r[2]) || 0, String(r[3] || ''), String(r[4] || ''), String(r[5] || ''), String(r[COL_DINVNO - 1] || ''), isD(r[COL_DDUE - 1]) ? r[COL_DDUE - 1] : '', String(r[6] || ''), sent(r) ? 'odesláno' : 'nový', isD(r[11]) ? r[11] : '', String(r[COL_DBATCH - 1] || ''), String(r[COL_DMSG - 1] || ''), '']);
-  sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setFontColor('#ffffff').setBackground(BLUE).setVerticalAlignment('middle').setWrap(true);
-  sh.setRowHeight(1, 36);
-  sh.setFrozenRows(1); sh.setFrozenColumns(1);
-  if (data.length) {
-    const n = data.length;
-    sh.getRange(2, 1, n, head.length).setValues(data).setFontColor(INK).setVerticalAlignment('middle');
-    sh.getRange(2, 3, n, 2).setNumberFormat('d. M. yyyy'); sh.getRange(2, 10, n, 1).setNumberFormat('d. M. yyyy'); sh.getRange(2, 13, n, 1).setNumberFormat('d. M. yyyy');
-    sh.getRange(2, 5, n, 1).setNumberFormat(KC).setFontWeight('bold');
-    sh.getRange(2, 1, n, 1).setFontWeight('bold').setFontColor(BLUE);
-    sh.getRange(2, 12, n, 1).setHorizontalAlignment('center').setFontWeight('bold');
-    rows.forEach((r, i) => { const u = String(r[7] || ''); if (/^https?:/.test(u)) setPhotoLink_(sh, i + 2, 16, (isInv(r) ? '📄 ' : '📷 ') + (num(r) || 'otevřít'), u); });
-    band(sh.getRange(1, 1, n + 1, head.length), BLUE);
-    const stav = sh.getRange(2, 12, n, 1);
-    sh.setConditionalFormatRules([
-      SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('nový').setBackground(NEW_BG).setFontColor(NEW_FG).setRanges([stav]).build(),
-      SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('odesláno').setBackground(OK_BG).setFontColor(OK_FG).setRanges([stav]).build()
-    ]);
-    sh.getRange(1, 1, n + 1, head.length).createFilter();
-  }
-  [110, 70, 95, 95, 115, 200, 220, 70, 110, 95, 140, 85, 105, 120, 220, 120].forEach((w, i) => sh.setColumnWidth(i + 1, w));
 
   // ---- list Přehled: pruh s názvem, dlaždice, výdaje po měsících, poslední doklady
   const ov = ss.getSheetByName('Přehled') || ss.insertSheet('Přehled', 0);
@@ -166,7 +123,6 @@ function dashRefresh_() {
       .setBackgrounds(last.map(r => [sent(r) ? OK_BG : NEW_BG])).setFontColors(last.map(r => [sent(r) ? OK_FG : NEW_FG]));
     last.forEach((r, i) => { const u = String(r[7] || ''); if (/^https?:/.test(u) && num(r)) setPhotoLink_(ov, H + 1 + i, 1, (isInv(r) ? '📄 ' : '📷 ') + num(r), u); });
   } else ov.getRange(H + 1, 1, 1, W).merge().setValue('Zatím žádné doklady.').setFontColor(MUTED);
-  ss.setActiveSheet(ov);
 }
 function dashRefreshSafe_() { try { dashRefresh_(); } catch (e) { Logger.log('Přehled dokladů se nepodařilo obnovit: ' + e.message); } }
 
@@ -175,7 +131,7 @@ function shareDash_(ss) {
   const list = mailList_(props_().getProperty('DASH_VIEWERS'));
   if (!list.length) return [];
   const done = [];
-  try { DriveApp.getFileById((ss || dashSS_()).getId()).addViewers(list); done.push('přehled'); } catch (e) { Logger.log('Sdílení přehledu: ' + e.message); }
+  try { DriveApp.getFileById((ss || dashSS_()).getId()).addViewers(list); done.push('soubor Doklady s přehledem'); } catch (e) { Logger.log('Sdílení přehledu: ' + e.message); }
   try { child_(driveRoot_(), DOCS_FOLDER).addViewers(list); done.push('složka Doklady'); } catch (e) { Logger.log('Sdílení složky Doklady: ' + e.message); }
   return done;
 }
@@ -184,11 +140,11 @@ function shareDash_(ss) {
 function refreshDash() {
   dashRefresh_();
   const ss = dashSS_();
-  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput('<p style="font:14px Arial">Přehled je obnovený:</p><p style="font:14px Arial"><a href="' + ss.getUrl() + '" target="_blank">' + escH_(ss.getName()) + '</a> (složka „' + DASH_FOLDER + '“)</p>').setWidth(440).setHeight(120), 'Přehled dokladů');
+  SpreadsheetApp.getUi().showModalDialog(HtmlService.createHtmlOutput('<p style="font:14px Arial">Přehled je obnovený:</p><p style="font:14px Arial"><a href="' + ss.getUrl() + '" target="_blank">' + escH_(ss.getName()) + '</a> (list Přehled)</p>').setWidth(440).setHeight(120), 'Přehled dokladů');
 }
 function setDashViewers() {
   const ui = SpreadsheetApp.getUi(), cur = props_().getProperty('DASH_VIEWERS') || '';
-  const r = ui.prompt('Kdo uvidí přehled dokladů', 'E-maily kolegů z výboru (oddělené čárkou). Dostanou právo číst přehled a otevírat odkazy na doklady (složka Doklady). Do SVJ_app ani do tabulky měřidel přístup nedostanou.' + (cur ? ' Teď: ' + cur : ''), ui.ButtonSet.OK_CANCEL);
+  const r = ui.prompt('Kdo uvidí přehled dokladů', 'E-maily kolegů z výboru (oddělené čárkou). Dostanou právo číst soubor Doklady (s přehledem) a otevírat odkazy na doklady (složka Doklady). Do Administrace ani do tabulky měřidel přístup nedostanou.' + (cur ? ' Teď: ' + cur : ''), ui.ButtonSet.OK_CANCEL);
   if (r.getSelectedButton() !== ui.Button.OK) return;
   const list = mailList_(r.getResponseText());
   if (!list.length) { ui.alert('Nenašel jsem žádnou platnou adresu. Přístup, který už někdo má, se tímto neodebírá; odebrat ho jde v Disku přes Sdílet.'); return; }

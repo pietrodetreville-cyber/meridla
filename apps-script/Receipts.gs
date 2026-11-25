@@ -3,7 +3,7 @@
 // vidí doklady všech a smí vybrané odeslat účetní z aplikace. V tabulce se vybírá zaškrtnutím ve sloupci Vybrat k odeslání.
 // Odeslané doklady se zapíšou do listu Faktury (DUZP = datum dokladu, lze přepsat) a list se seřadí podle DUZP.
 // Fotky se ukládají na Disk do složky Doklady (SVJ_app/OSTRE nebo TESTOVACI). E-mail účetní je ve vlastnostech skriptu (ACCOUNTANT),
-// nastavuje se z menu Měřidla → Doklady → Nastavit e-mail účetní.
+// nastavuje se z menu Administrace → Doklady → Nastavit e-mail účetní.
 
 const SHEET_DOCS = 'Doklady', DOCS_FOLDER = 'Doklady';
 // Doklady a Faktury jsou v samostatné Google tabulce „Doklady SVJ Od Vysoké“ ve složce SVJ_app/OSTRE (TESTOVACI).
