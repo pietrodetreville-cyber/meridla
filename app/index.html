@@ -198,6 +198,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 .tools{flex:none;display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--pop);border:1px solid var(--line);box-shadow:0 2px 8px #0a2a4015}
 .tools .themebtn{width:34px;height:34px;font-size:1.05rem;border:0;box-shadow:none;background:transparent}
 .tools .themebtn:active{background:var(--line)}
+.themebtn.hide,.tools .themebtn.hide{display:none}
 #hrefresh.spin{animation:rot .8s linear infinite}
 @keyframes rot{to{transform:rotate(360deg)}}
 .themebtn{flex:none;width:42px;height:42px;padding:0;border-radius:50%;background:var(--pop);color:var(--fg);border:1px solid var(--line);font-size:1.2rem;display:grid;place-items:center;box-shadow:0 2px 8px #0a2a4015}
@@ -383,7 +384,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.51.0';
+const VERSION = '1.51.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
