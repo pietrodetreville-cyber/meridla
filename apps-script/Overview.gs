@@ -29,50 +29,143 @@ function dashRefresh_() {
   const isD = x => Object.prototype.toString.call(x) === '[object Date]';
   const sent = r => /^odesl/i.test(String(r[8] || ''));
   const num = r => String(r[COL_DNUM - 1] || '');
+  const isInv = r => String(r[COL_DTYPE - 1]) === 'faktura';
+  const day = r => isD(r[COL_DDUZP - 1]) ? r[COL_DDUZP - 1] : isD(r[1]) ? r[1] : null;
   rows.sort((a, b) => num(b).localeCompare(num(a)) || new Date(b[0]) - new Date(a[0]));
+  const BLUE = '#2563eb', INK = '#1f2933', MUTED = '#6b7280', KC = '#,##0.00 "Kč"', KC0 = '#,##0 "Kč"';
+  const NEW_BG = '#fff4cc', NEW_FG = '#8a6100', OK_BG = '#dcf3e3', OK_FG = '#166534';
+  // vyčistí list včetně grafů, sloučených buněk, pruhování a podmíněného formátu
+  const wipe = s => {
+    if (s.getFilter()) s.getFilter().remove();
+    s.getCharts().forEach(c => s.removeChart(c));
+    s.getBandings().forEach(b => b.remove());
+    s.getRange(1, 1, s.getMaxRows(), s.getMaxColumns()).breakApart();
+    s.setConditionalFormatRules([]);
+    s.clear();
+  };
+  const band = (rg, headBg) => rg.applyRowBanding(SpreadsheetApp.BandingTheme.BLUE, true, false)
+    .setHeaderRowColor(headBg).setFirstRowColor('#ffffff').setSecondRowColor('#f4f7fc');
 
   // ---- list Doklady: všechny doklady s odkazem
   const head = ['Číslo dokladu', 'Typ', 'Datum dokladu', 'DUZP', 'Částka (Kč)', 'Dodavatel', 'Účel', 'Budova', 'Číslo faktury', 'Splatnost', 'Zapsal(a)', 'Stav', 'Odesláno účetní', 'Dávka', 'Zpráva pro účetní', 'Doklad'];
-  let sh = ss.getSheetByName('Doklady') || ss.insertSheet('Doklady');
-  if (sh.getFilter()) sh.getFilter().remove();
-  sh.clear();
+  const sh = ss.getSheetByName('Doklady') || ss.insertSheet('Doklady');
+  wipe(sh);
+  sh.setHiddenGridlines(true);
   const data = rows.map(r => [num(r), String(r[COL_DTYPE - 1] || 'paragon'), isD(r[1]) ? r[1] : '', isD(r[COL_DDUZP - 1]) ? r[COL_DDUZP - 1] : '', Number(r[2]) || 0, String(r[3] || ''), String(r[4] || ''), String(r[5] || ''), String(r[COL_DINVNO - 1] || ''), isD(r[COL_DDUE - 1]) ? r[COL_DDUE - 1] : '', String(r[6] || ''), sent(r) ? 'odesláno' : 'nový', isD(r[11]) ? r[11] : '', String(r[COL_DBATCH - 1] || ''), String(r[COL_DMSG - 1] || ''), '']);
-  sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setBackground('#eef2f7');
-  sh.setFrozenRows(1);
+  sh.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold').setFontColor('#ffffff').setBackground(BLUE).setVerticalAlignment('middle').setWrap(true);
+  sh.setRowHeight(1, 36);
+  sh.setFrozenRows(1); sh.setFrozenColumns(1);
   if (data.length) {
-    sh.getRange(2, 1, data.length, head.length).setValues(data);
-    sh.getRange(2, 3, data.length, 2).setNumberFormat('d. M. yyyy'); sh.getRange(2, 10, data.length, 1).setNumberFormat('d. M. yyyy'); sh.getRange(2, 13, data.length, 1).setNumberFormat('d. M. yyyy');
-    sh.getRange(2, 5, data.length, 1).setNumberFormat('#,##0.00 "Kč"');
-    rows.forEach((r, i) => { const u = String(r[7] || ''); if (/^https?:/.test(u)) setPhotoLink_(sh, i + 2, 16, (String(r[COL_DTYPE - 1]) === 'faktura' ? '📄 ' : '📷 ') + (num(r) || 'otevřít'), u); });
-    sh.getRange(1, 1, data.length + 1, head.length).createFilter();
+    const n = data.length;
+    sh.getRange(2, 1, n, head.length).setValues(data).setFontColor(INK).setVerticalAlignment('middle');
+    sh.getRange(2, 3, n, 2).setNumberFormat('d. M. yyyy'); sh.getRange(2, 10, n, 1).setNumberFormat('d. M. yyyy'); sh.getRange(2, 13, n, 1).setNumberFormat('d. M. yyyy');
+    sh.getRange(2, 5, n, 1).setNumberFormat(KC).setFontWeight('bold');
+    sh.getRange(2, 1, n, 1).setFontWeight('bold').setFontColor(BLUE);
+    sh.getRange(2, 12, n, 1).setHorizontalAlignment('center').setFontWeight('bold');
+    rows.forEach((r, i) => { const u = String(r[7] || ''); if (/^https?:/.test(u)) setPhotoLink_(sh, i + 2, 16, (isInv(r) ? '📄 ' : '📷 ') + (num(r) || 'otevřít'), u); });
+    band(sh.getRange(1, 1, n + 1, head.length), BLUE);
+    const stav = sh.getRange(2, 12, n, 1);
+    sh.setConditionalFormatRules([
+      SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('nový').setBackground(NEW_BG).setFontColor(NEW_FG).setRanges([stav]).build(),
+      SpreadsheetApp.newConditionalFormatRule().whenTextEqualTo('odesláno').setBackground(OK_BG).setFontColor(OK_FG).setRanges([stav]).build()
+    ]);
+    sh.getRange(1, 1, n + 1, head.length).createFilter();
   }
-  [110, 70, 95, 95, 110, 200, 220, 70, 110, 95, 140, 75, 105, 120, 220, 120].forEach((w, i) => sh.setColumnWidth(i + 1, w));
+  [110, 70, 95, 95, 115, 200, 220, 70, 110, 95, 140, 85, 105, 120, 220, 120].forEach((w, i) => sh.setColumnWidth(i + 1, w));
 
-  // ---- list Přehled: součty a měsíce
-  let ov = ss.getSheetByName('Přehled') || ss.insertSheet('Přehled', 0);
-  ov.clear();
-  const sum = a => a.reduce((s, r) => s + (Number(r[2]) || 0), 0);
-  const open = rows.filter(r => !sent(r)), months = {};
-  rows.forEach(r => { const d = isD(r[COL_DDUZP - 1]) ? r[COL_DDUZP - 1] : isD(r[1]) ? r[1] : null; const k = d ? Utilities.formatDate(d, tz, 'yyyy-MM') : '(bez data)'; const m = months[k] || (months[k] = { n: 0, s: 0, open: 0, inv: 0 }); m.n++; m.s += Number(r[2]) || 0; if (!sent(r)) m.open++; if (String(r[COL_DTYPE - 1]) === 'faktura') m.inv++; });
-  const out = [
-    ['Přehled dokladů SVJ Od Vysoké', '', '', '', ''],
-    ['Aktualizováno ' + Utilities.formatDate(new Date(), tz, 'd. M. yyyy H:mm') + ' · podrobnosti a odkazy na doklady jsou v listu Doklady', '', '', '', ''],
-    ['', '', '', '', ''],
-    ['Dokladů celkem', rows.length, '', 'Celkem (Kč)', sum(rows)],
-    ['Z toho faktur', rows.filter(r => String(r[COL_DTYPE - 1]) === 'faktura').length, '', 'Paragony (Kč)', sum(rows.filter(r => String(r[COL_DTYPE - 1]) !== 'faktura'))],
-    ['Neodesláno účetní', open.length, '', 'Neodesláno (Kč)', sum(open)],
-    ['', '', '', '', ''],
-    ['Měsíc (podle DUZP / data dokladu)', 'Dokladů', 'Z toho faktur', 'Neodesláno', 'Celkem (Kč)']
+  // ---- list Přehled: pruh s názvem, dlaždice, výdaje po měsících, poslední doklady
+  const ov = ss.getSheetByName('Přehled') || ss.insertSheet('Přehled', 0);
+  wipe(ov);
+  ov.setHiddenGridlines(true);
+  const W = 8, sum = a => a.reduce((s, r) => s + (Number(r[2]) || 0), 0);
+  const open = rows.filter(r => !sent(r)), invs = rows.filter(isInv), months = {};
+  const MES = ['leden', 'únor', 'březen', 'duben', 'květen', 'červen', 'červenec', 'srpen', 'září', 'říjen', 'listopad', 'prosinec'];
+  const mName = k => /^\d{4}-\d{2}$/.test(k) ? MES[Number(k.slice(5)) - 1] + ' ' + k.slice(0, 4) : k;
+  const nDocs = n => n + (n === 1 ? ' doklad' : n > 1 && n < 5 ? ' doklady' : ' dokladů');
+  rows.forEach(r => { const d = day(r); const k = d ? Utilities.formatDate(d, tz, 'yyyy-MM') : '(bez data)'; const m = months[k] || (months[k] = { n: 0, s: 0, open: 0, inv: 0 }); m.n++; m.s += Number(r[2]) || 0; if (!sent(r)) m.open++; if (isInv(r)) m.inv++; });
+  const nowK = Utilities.formatDate(new Date(), tz, 'yyyy-MM'), cur = months[nowK] || { n: 0, s: 0 };
+  [150, 105, 105, 105, 120, 105, 105, 120].forEach((w, i) => ov.setColumnWidth(i + 1, w));
+
+  // pruh s názvem
+  ov.getRange(1, 1, 1, W).merge().setValue('Přehled dokladů SVJ Od Vysoké').setFontSize(18).setFontWeight('bold');
+  ov.getRange(2, 1, 1, W).merge().setValue('Aktualizováno ' + Utilities.formatDate(new Date(), tz, 'd. M. yyyy H:mm') + '  ·  všechny doklady s odkazy jsou v listu Doklady').setFontSize(10);
+  ov.getRange(1, 1, 2, W).setBackground(BLUE).setFontColor('#ffffff').setVerticalAlignment('middle').setHorizontalAlignment('left');
+  ov.getRange(2, 1, 1, W).setFontColor('#dbe7ff');
+  ov.setRowHeight(1, 44); ov.setRowHeight(2, 24); ov.setRowHeight(3, 14);
+
+  // dlaždice: popisek, velké číslo, doplněk
+  const cards = [
+    ['Dokladů celkem', rows.length, '0', 'faktury ' + invs.length + ' · paragony ' + (rows.length - invs.length), '#e8f0fe', '#1d4ed8'],
+    ['Celkem', sum(rows), KC0, 'z toho faktury ' + fmtKc_(sum(invs)), '#e6f4ea', OK_FG],
+    ['Neodesláno účetní', open.length, '0', open.length ? fmtKc_(sum(open)) : 'vše odesláno ✓', open.length ? NEW_BG : '#e6f4ea', open.length ? NEW_FG : OK_FG],
+    ['Tento měsíc', cur.s, KC0, mName(nowK) + ' · ' + nDocs(cur.n), '#f3e8fd', '#7e22ce']
   ];
-  Object.keys(months).sort().reverse().forEach(k => { const m = months[k]; out.push([k, m.n, m.inv, m.open, m.s]); });
-  ov.getRange(1, 1, out.length, 5).setValues(out);
-  ov.getRange(1, 1).setFontSize(16).setFontWeight('bold'); ov.getRange(2, 1).setFontColor('#6b7280');
-  ov.getRange(4, 1, 3, 1).setFontWeight('bold'); ov.getRange(4, 4, 3, 1).setFontWeight('bold');
-  ov.getRange(4, 5, 3, 1).setNumberFormat('#,##0.00 "Kč"');
-  ov.getRange(8, 1, 1, 5).setFontWeight('bold').setBackground('#eef2f7');
-  if (out.length > 8) ov.getRange(9, 5, out.length - 8, 1).setNumberFormat('#,##0.00 "Kč"');
-  if (open.length) ov.getRange(6, 1, 1, 5).setBackground('#fff8e1');
-  [260, 90, 110, 130, 140].forEach((w, i) => ov.setColumnWidth(i + 1, w));
+  cards.forEach((c, i) => {
+    const col = 1 + i * 2, box = ov.getRange(4, col, 3, 2);
+    box.setBackground(c[4]).setHorizontalAlignment('center').setVerticalAlignment('middle');
+    ov.getRange(4, col, 1, 2).merge().setValue(c[0].toUpperCase()).setFontSize(9).setFontWeight('bold').setFontColor(c[5]);
+    ov.getRange(5, col, 1, 2).merge().setValue(c[1]).setNumberFormat(c[2]).setFontSize(22).setFontWeight('bold').setFontColor(INK);
+    ov.getRange(6, col, 1, 2).merge().setValue(c[3]).setFontSize(9).setFontColor(MUTED);
+    box.setBorder(true, true, true, true, null, null, '#ffffff', SpreadsheetApp.BorderStyle.SOLID_THICK);
+  });
+  ov.setRowHeight(4, 26); ov.setRowHeight(5, 42); ov.setRowHeight(6, 24); ov.setRowHeight(7, 18);
+
+  const section = (row, text) => {
+    ov.getRange(row, 1, 1, W).merge().setValue(text).setFontSize(12).setFontWeight('bold').setFontColor(BLUE).setVerticalAlignment('bottom')
+      .setBorder(null, null, true, null, null, null, BLUE, SpreadsheetApp.BorderStyle.SOLID);
+    ov.setRowHeight(row, 30);
+  };
+
+  // výdaje po měsících: tabulka vlevo (nejnovější nahoře), graf vpravo (posledních 12 měsíců)
+  section(8, 'Výdaje po měsících');
+  const keys = Object.keys(months).filter(k => k !== '(bez data)').sort().reverse();
+  const dated = keys.length;
+  if (months['(bez data)']) keys.push('(bez data)');
+  const T = 10, mt = [['Měsíc', 'Dokladů', 'Faktur', 'Neodesláno', 'Celkem']].concat(keys.map(k => { const m = months[k]; return [mName(k), m.n, m.inv, m.open, m.s]; }));
+  ov.setRowHeight(9, 8);
+  ov.getRange(T, 1, mt.length, 1).setNumberFormat('@');
+  ov.getRange(T, 1, mt.length, 5).setValues(mt).setVerticalAlignment('middle').setFontColor(INK);
+  ov.getRange(T, 1, 1, 5).setFontWeight('bold');
+  ov.getRange(T, 2, mt.length, 3).setHorizontalAlignment('center');
+  ov.getRange(T, 5, mt.length, 1).setHorizontalAlignment('right');
+  if (mt.length > 1) {
+    ov.getRange(T + 1, 5, mt.length - 1, 1).setNumberFormat(KC).setFontWeight('bold');
+    ov.getRange(T + 1, 4, mt.length - 1, 1).setFontColor(NEW_FG);
+    band(ov.getRange(T, 1, mt.length, 5), '#dbe7ff');
+  }
+  if (dated) {
+    const k = Math.min(12, dated);
+    ov.insertChart(ov.newChart().setChartType(Charts.ChartType.COLUMN)
+      .addRange(ov.getRange(T, 1, k + 1, 1)).addRange(ov.getRange(T, 5, k + 1, 1)).setNumHeaders(1)
+      .setPosition(T, 6, 10, 0)
+      .setOption('title', 'Výdaje po měsících (Kč)').setOption('titleTextStyle', { color: INK, fontSize: 13, bold: true })
+      .setOption('legend.position', 'none').setOption('colors', [BLUE])
+      .setOption('hAxis.direction', -1).setOption('hAxis.textStyle', { color: MUTED, fontSize: 10 })
+      .setOption('vAxis.format', '#,##0').setOption('vAxis.textStyle', { color: MUTED, fontSize: 10 }).setOption('vAxis.gridlines.color', '#eef1f5').setOption('vAxis.minValue', 0)
+      .setOption('bar.groupWidth', '65%').setOption('backgroundColor', '#ffffff')
+      .setOption('width', 330).setOption('height', 250).build());
+  }
+
+  // posledních 8 dokladů s odkazem (graf je vysoký asi 12 řádků)
+  const L = Math.max(T + mt.length, T + 12) + 1, last = rows.slice(0, 8);
+  section(L, 'Poslední doklady');
+  ov.setRowHeight(L + 1, 8);
+  const H = L + 2;
+  const lt = [['Číslo', 'Datum', 'Dodavatel', '', 'Účel', '', 'Částka', 'Stav']].concat(last.map(r => [num(r), day(r) || '', String(r[3] || ''), '', String(r[4] || ''), '', Number(r[2]) || 0, sent(r) ? 'odesláno' : 'nový']));
+  ov.getRange(H, 1, lt.length, 1).setNumberFormat('@');
+  ov.getRange(H, 1, lt.length, W).setValues(lt).setVerticalAlignment('middle').setFontColor(INK);
+  ov.getRange(H, 3, lt.length, 2).mergeAcross(); ov.getRange(H, 5, lt.length, 2).mergeAcross();
+  ov.getRange(H, 1, 1, W).setFontWeight('bold');
+  ov.getRange(H, 7, lt.length, 1).setHorizontalAlignment('right');
+  ov.getRange(H, 8, lt.length, 1).setHorizontalAlignment('center');
+  if (last.length) {
+    band(ov.getRange(H, 1, lt.length, W), '#dbe7ff');
+    ov.getRange(H + 1, 2, last.length, 1).setNumberFormat('d. M. yyyy');
+    ov.getRange(H + 1, 7, last.length, 1).setNumberFormat(KC).setFontWeight('bold');
+    ov.getRange(H + 1, 8, last.length, 1).setFontWeight('bold')
+      .setBackgrounds(last.map(r => [sent(r) ? OK_BG : NEW_BG])).setFontColors(last.map(r => [sent(r) ? OK_FG : NEW_FG]));
+    last.forEach((r, i) => { const u = String(r[7] || ''); if (/^https?:/.test(u) && num(r)) setPhotoLink_(ov, H + 1 + i, 1, (isInv(r) ? '📄 ' : '📷 ') + num(r), u); });
+  } else ov.getRange(H + 1, 1, 1, W).merge().setValue('Zatím žádné doklady.').setFontColor(MUTED);
   ss.setActiveSheet(ov);
 }
 function dashRefreshSafe_() { try { dashRefresh_(); } catch (e) { Logger.log('Přehled dokladů se nepodařilo obnovit: ' + e.message); } }
