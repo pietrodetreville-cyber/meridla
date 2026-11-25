@@ -6,15 +6,51 @@
 // nastavuje se z menu Měřidla → Doklady → Nastavit e-mail účetní.
 
 const SHEET_DOCS = 'Doklady', DOCS_FOLDER = 'Doklady';
+// Doklady a Faktury jsou v samostatné Google tabulce „Doklady SVJ Od Vysoké“ ve složce SVJ_app/OSTRE (TESTOVACI).
+// Vytvoří se sama při prvním použití; její ID je ve vlastnosti skriptu DOCS_SS. Při otevření má vlastní menu Doklady.
+function docsFileName_() { return 'Doklady SVJ Od Vysoké' + (props_().getProperty('ENV') === 'test' ? ' – TEST' : ''); }
+function docsSSIfExists_() { const id = props_().getProperty('DOCS_SS'); if (!id) return null; try { return SpreadsheetApp.openById(id); } catch (e) { return null; } }
+function docsSS_() {
+  const have = docsSSIfExists_(); if (have) return have;
+  const ss = SpreadsheetApp.create(docsFileName_());
+  try { DriveApp.getFileById(ss.getId()).moveTo(driveRoot_()); } catch (e) {}
+  props_().setProperty('DOCS_SS', ss.getId());
+  // první list = Doklady; dřívější listy Doklady a Faktury z tabulky měřidel se zkopírují (původní zůstanou s příponou „(přesunuto)“)
+  const first = ss.getSheets()[0]; first.setName(SHEET_DOCS);
+  const old = SpreadsheetApp.getActive();
+  [SHEET_DOCS, 'Faktury'].forEach(n => {
+    const src = old && old.getSheetByName(n); if (!src || src.getLastRow() < 1) return;
+    const dst = ss.getSheetByName(n) || ss.insertSheet(n), v = src.getDataRange().getValues();
+    dst.getRange(1, 1, v.length, v[0].length).setValues(v); dst.setFrozenRows(1); dst.getRange(1, 1, 1, v[0].length).setFontWeight('bold');
+    if (n === SHEET_DOCS) { dst.getRange('B:B').setNumberFormat('d. M. yyyy'); dst.getRange('C:C').setNumberFormat('#,##0.00'); if (v.length > 1 && v[0].length >= COL_DSEL) dst.getRange(2, COL_DSEL, v.length - 1, 1).insertCheckboxes(); }
+    else { dst.getRange('A:B').setNumberFormat('d. M. yyyy'); dst.getRange('C:C').setNumberFormat('#,##0.00'); }
+    try { src.setName(n + ' (přesunuto)'); } catch (e) {}
+  });
+  try {
+    if (!ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'docsOnOpen' && t.getTriggerSourceId() === ss.getId()))
+      ScriptApp.newTrigger('docsOnOpen').forSpreadsheet(ss).onOpen().create();
+  } catch (e) { Logger.log('Menu pro soubor dokladů se nepodařilo zapnout: ' + e.message); }
+  return ss;
+}
+// menu v souboru dokladů (instalovaný spouštěč při otevření)
+function docsOnOpen() {
+  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addToUi();
+}
+// z menu tabulky měřidel: odkaz na soubor dokladů
+function openDocsFile() {
+  const ss = docsSS_(), url = ss.getUrl();
+  const html = HtmlService.createHtmlOutput('<p style="font:14px Arial">Doklady a faktury jsou v samostatné tabulce:</p><p style="font:14px Arial"><a href="' + url + '" target="_blank">' + ss.getName() + '</a></p>').setWidth(420).setHeight(120);
+  SpreadsheetApp.getUi().showModalDialog(html, 'Soubor dokladů');
+}
 const DOCS_HEAD = ['Zapsáno', 'Datum dokladu', 'Částka (Kč)', 'Obchod / dodavatel', 'Účel', 'Budova', 'Kdo', 'Fotka', 'Stav', 'ID', 'Poznámka', 'Odesláno účetní', 'Vybrat k odeslání'];
 const COL_DSEL = 13;
 const DOCS_MAX_MAIL = 15; // nejvýš dokladů v jednom e-mailu (velikost příloh)
 
 function docsSheet_() {
-  const ss = SpreadsheetApp.getActive();
+  const ss = docsSS_();
   let sh = ss.getSheetByName(SHEET_DOCS);
-  if (!sh) {
-    sh = ss.insertSheet(SHEET_DOCS);
+  if (!sh) sh = ss.insertSheet(SHEET_DOCS);
+  if (sh.getLastRow() === 0) {
     sh.appendRow(DOCS_HEAD); sh.setFrozenRows(1); sh.getRange(1, 1, 1, DOCS_HEAD.length).setFontWeight('bold');
     sh.getRange('B:B').setNumberFormat('d. M. yyyy'); sh.getRange('C:C').setNumberFormat('#,##0.00');
   }
@@ -50,7 +86,7 @@ function receiptSave_(body, who) {
 
 // posledních 40 dokladů (nejnovější nahoře)
 function receiptsList_(P) {
-  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_DOCS);
+  const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
   if (!sh || sh.getLastRow() < 2) return { ok: true, items: [], accountant: !!props_().getProperty('ACCOUNTANT') };
   const all = !P || P.acc, n = sh.getLastRow() - 1;
   const v = sh.getRange(2, 1, n, 12).getValues().filter(r => all || String(r[6]) === P.name).slice(-60);
@@ -94,7 +130,7 @@ function receiptRead_(b64) {
 function receiptsSendCore_(who, pick) {
   const to = props_().getProperty('ACCOUNTANT');
   if (!to) return { ok: false, error: 'noaccountant' };
-  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_DOCS);
+  const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
   if (!sh || sh.getLastRow() < 2) return { ok: true, count: 0 };
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
@@ -134,7 +170,7 @@ const SHEET_INV = 'Faktury';
 const INV_HEAD = ['DUZP', 'Datum dokladu', 'Částka (Kč)', 'Dodavatel', 'Účel', 'Budova', 'Doklad (fotka)', 'ID dokladu', 'Odesláno účetní', 'Poznámka'];
 // list se založí, pokud chybí; pokud už existuje (třeba vlastní), zapisuje se podle názvů sloupců a chybějící sloupce se přidají na konec
 function invoicesAppend_(rows, stamp) {
-  const ss = SpreadsheetApp.getActive();
+  const ss = docsSS_();
   let sh = ss.getSheetByName(SHEET_INV);
   if (!sh) {
     sh = ss.insertSheet(SHEET_INV); sh.appendRow(INV_HEAD); sh.setFrozenRows(1); sh.getRange(1, 1, 1, INV_HEAD.length).setFontWeight('bold');
@@ -169,12 +205,12 @@ function setAccountant() {
 function sendReceipts() {
   const ui = SpreadsheetApp.getUi(), r = receiptsSendCore_(Session.getActiveUser().getEmail() || 'správce (tabulka)', row => row[COL_DSEL - 1] === true);
   if (!r.ok) { ui.alert(r.error === 'noaccountant' ? 'Nejdřív nastav e-mail účetní (Měřidla → Doklady → Nastavit e-mail účetní).' : 'Odeslání se nepovedlo.'); return; }
-  ui.alert(r.count ? 'Odesláno ' + r.count + ' dokladů na ' + r.to + ' a zapsáno do listu Faktury.' + (r.more ? ' Zbývá ještě ' + r.more + ' vybraných, pošli je dalším spuštěním.' : '') + (r.skipped ? ' Přeskočeno už odeslaných: ' + r.skipped + '.' : '') : (r.skipped ? 'Vybrané doklady už byly odeslané.' : 'Nic není vybráno. V listu Doklady zaškrtni ve sloupci Vybrat k odeslání doklady, které chceš poslat.'));
+  ui.alert(r.count ? 'Odesláno ' + r.count + ' dokladů na ' + r.to + ' a zapsáno do listu Faktury (soubor dokladů).' + (r.more ? ' Zbývá ještě ' + r.more + ' vybraných, pošli je dalším spuštěním.' : '') + (r.skipped ? ' Přeskočeno už odeslaných: ' + r.skipped + '.' : '') : (r.skipped ? 'Vybrané doklady už byly odeslané.' : 'Nic není vybráno. V listu Doklady zaškrtni ve sloupci Vybrat k odeslání doklady, které chceš poslat.'));
 }
 function sortInvoices() {
-  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_INV);
+  const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_INV);
   if (!sh || sh.getLastRow() < 3) { SpreadsheetApp.getUi().alert('List Faktury je prázdný nebo má jen jeden řádek.'); return; }
   const head = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(h => String(h).trim().toLowerCase()), i = head.indexOf('duzp');
   if (i < 0) { SpreadsheetApp.getUi().alert('V listu Faktury chybí sloupec DUZP.'); return; }
-  sortInvoices_(sh, i); SpreadsheetApp.getActive().toast('Faktury jsou seřazené podle DUZP.', 'Hotovo', 5);
+  sortInvoices_(sh, i); dss.toast('Faktury jsou seřazené podle DUZP.', 'Hotovo', 5);
 }
