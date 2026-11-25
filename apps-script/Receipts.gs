@@ -34,7 +34,15 @@ function docsSS_() {
 }
 // menu v souboru dokladů (instalovaný spouštěč při otevření)
 function docsOnOpen() {
-  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog').addItem('Obnovit přehled dokladů', 'refreshDash').addItem('Nastavit čtenáře přehledu (výbor)', 'setDashViewers').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc').addToUi();
+  const ui = SpreadsheetApp.getUi();
+  ui.createMenu('Doklady')
+    .addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog')
+    .addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts')
+    .addItem('Obnovit přehled pro výbor', 'refreshDash')
+    .addItem('Seřadit Faktury podle DUZP', 'sortInvoices')
+    .addSeparator()
+    .addSubMenu(ui.createMenu('Nastavení').addItem('E-mail účetní', 'setAccountant').addItem('Kopie e-mailu (výbor)', 'setAccountantCc').addItem('Kdo z výboru vidí doklady a přehled', 'setDashViewers'))
+    .addToUi();
 }
 // z menu tabulky měřidel: odkaz na soubor dokladů
 function openDocsFile() {

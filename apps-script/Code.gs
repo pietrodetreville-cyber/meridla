@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.51.1';
+const SCRIPT_VERSION = '1.51.2';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -145,7 +145,16 @@ function clearAppCache() { bustAll_(); try { SpreadsheetApp.getActive().toast('M
 function formatMeterRows() { formatMeterRows_(); try { SpreadsheetApp.getActive().toast('Měřidla jsou obarvená: zelená = dodavatel, žlutá = interní.', 'Hotovo', 6); } catch (e) {} }
 function onOpen() {
   ensureSupplierCol_(); formatMeterRows_();
-  const menu = SpreadsheetApp.getUi().createMenu('Administrace').addItem('Otevřít tabulku měřidel', 'openMetersFile').addItem('Otevřít soubor dokladů (a přehled)', 'openDocsFile').addSeparator().addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obnovit data v aplikaci (vymazat mezipaměť)', 'clearAppCache').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addSubMenu(SpreadsheetApp.getUi().createMenu('Doklady').addItem('Otevřít soubor dokladů', 'openDocsFile').addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog').addItem('Obnovit přehled dokladů', 'refreshDash').addItem('Nastavit čtenáře přehledu (výbor)', 'setDashViewers').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc')).addItem('Zkontrolovat oprávnění lidí', 'checkPeople').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder');
+  const ui = SpreadsheetApp.getUi(), sub = n => ui.createMenu(n);
+  const menu = ui.createMenu('Administrace')
+    .addItem('📏 Otevřít tabulku měřidel', 'openMetersFile')
+    .addItem('🧾 Otevřít doklady (faktury, účetní, přehled)', 'openDocsFile')
+    .addSeparator()
+    .addSubMenu(sub('Lidé').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Zkontrolovat oprávnění lidí', 'checkPeople'))
+    .addSubMenu(sub('Měřidla').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Obnovit data v aplikaci (vymazat mezipaměť)', 'clearAppCache'))
+    .addSubMenu(sub('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite').addSeparator().addItem('Vymazat list Import z papíru', 'resetImportSheet'))
+    .addSubMenu(sub('Upozornění na termíny').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails'))
+    .addSubMenu(sub('Údržba (opatrně)').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSeparator().addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings'));
   if (!props_().getProperty('METERS_SS')) menu.addSeparator().addItem('Přesunout měřidla do samostatné tabulky (jednorázově)', 'splitMetersFile');
   menu.addToUi();
 }
