@@ -8,6 +8,7 @@ function dashSS_() { return docsSS_(); }
 function dashRefresh_() {
   const dss = docsSSIfExists_(), src = dss && dss.getSheetByName(SHEET_DOCS);
   if (!src) return;
+  try { clearSentChecks_(src); } catch (e) {}
   const ss = dashSS_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   const rows = docRows_(src, Math.max(DOCS_HEAD.length, src.getLastColumn())).filter(r => r[9]);
   const isD = x => Object.prototype.toString.call(x) === '[object Date]';

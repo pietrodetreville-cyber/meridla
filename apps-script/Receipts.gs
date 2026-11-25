@@ -34,6 +34,7 @@ function docsSS_() {
 }
 // menu v souboru dokladů (instalovaný spouštěč při otevření)
 function docsOnOpen() {
+  try { clearSentChecks_(docsSheet_()); } catch (e) {}
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Doklady')
     .addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog')
@@ -51,6 +52,14 @@ function openDocsFile() {
   SpreadsheetApp.getUi().showModalDialog(html, 'Soubor dokladů');
 }
 const DOCS_HEAD = ['Zapsáno', 'Datum dokladu', 'Částka (Kč)', 'Obchod / dodavatel', 'Účel', 'Budova', 'Kdo', 'Fotka', 'Stav', 'ID', 'Poznámka', 'Odesláno účetní', 'Vybrat k odeslání', 'Dávka', 'Zpráva pro účetní', 'Číslo dokladu', 'Typ', 'Číslo faktury', 'DUZP', 'Splatnost'];
+// u odeslaných dokladů zaškrtávátko k odeslání zmizí (odeslat jde jen jednou)
+function clearSentChecks_(sh) {
+  const n = sh.getLastRow() - 1; if (n < 1 || sh.getLastColumn() < COL_DSEL) return 0;
+  const v = sh.getRange(2, 1, n, COL_DSEL).getValues(), a1 = [];
+  v.forEach((r, i) => { if (/^odesl/i.test(String(r[8] || '')) && r[COL_DSEL - 1] !== '') a1.push(sh.getRange(i + 2, COL_DSEL).getA1Notation()); });
+  if (a1.length) sh.getRangeList(a1).removeCheckboxes().clearContent();
+  return a1.length;
+}
 const COL_DSEL = 13, COL_DBATCH = 14, COL_DMSG = 15, COL_DNUM = 16, COL_DTYPE = 17, COL_DINVNO = 18, COL_DDUZP = 19, COL_DDUE = 20;
 // fotka v buňce: krátký text (📷 číslo dokladu) s odkazem místo dlouhé adresy
 function setPhotoLink_(sh, row, col, label, url) {
@@ -263,7 +272,7 @@ function receiptsSendCore_(who, pick, message, extra) {
     if (cc.length) mail.cc = cc.join(',');
     MailApp.sendEmail(mail);
     const note = msg + (extraList.length ? (msg ? ' ' : '') + '(kopie: ' + extraList.join(', ') + ')' : '');
-    batch.forEach(x => { sh.getRange(x.n, 9).setValue('odesláno'); sh.getRange(x.n, 12).setValue(stamp); sh.getRange(x.n, COL_DSEL).setValue(false); sh.getRange(x.n, COL_DBATCH).setValue(batchId); sh.getRange(x.n, COL_DMSG).setValue(note); });
+    batch.forEach(x => { sh.getRange(x.n, 9).setValue('odesláno'); sh.getRange(x.n, 12).setValue(stamp); sh.getRange(x.n, COL_DSEL).removeCheckboxes().clearContent(); sh.getRange(x.n, COL_DBATCH).setValue(batchId); sh.getRange(x.n, COL_DMSG).setValue(note); });
     invoicesAppend_(batch.map(x => x.r), stamp, batchId, note);
     return { ok: true, count: batch.length, to: to, cc: cc, more: chosen.length - batch.length, skipped: skipped.length };
   } finally { lock.releaseLock(); }
