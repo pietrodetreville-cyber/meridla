@@ -21,8 +21,11 @@ function invUiList() {
     out.push({ id: f.getId(), name: f.getName(), t: f.getDateCreated().getTime(), date: Utilities.formatDate(f.getDateCreated(), tz, 'd. M. yyyy H:mm'), kb: Math.round(f.getSize() / 1024) });
   }
   out.sort((a, b) => b.t - a.t);
-  const sh = docsSheet_(), bs = Object.keys(buildings_()).map(k => buildings_()[k].name);
-  meters_().forEach(m => { if (m.building && bs.indexOf(m.building) < 0) bs.push(m.building); });
+  // okno běží i ze souboru dokladů, kde list Měřidla není: budovy si pamatuje vlastnost BUILDINGS (ukládá se při načtení aplikace)
+  const sh = docsSheet_();
+  let bs = String(props_().getProperty('BUILDINGS') || '').split('|').filter(Boolean);
+  if (!bs.length) { try { bs = meters_().map(m => m.building).filter((b, i, a) => b && a.indexOf(b) === i); } catch (e) {} }
+  if (!bs.length) bs = ['271', '272', '273', '274', '275', 'Kotelna'];
   return { folderUrl: folder.getUrl(), files: out, buildings: bs.sort((a, b) => String(a).localeCompare(String(b), 'cs', { numeric: true })), docsUrl: sh.getParent().getUrl() };
 }
 

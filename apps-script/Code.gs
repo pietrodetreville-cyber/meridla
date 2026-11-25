@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.48.0';
+const SCRIPT_VERSION = '1.48.1';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -452,6 +452,7 @@ function doGet(e) {
   if (MISSING_IDS_) { fillIds_(); METERS_MEMO_ = null; } // doplnění id jen když nějaké chybí
   const sm = summary_();
   const locks = lockedMap_(meters_().map(m => m.id), who);
+  try { const bl = meters_().map(m => m.building).filter((b, i, a) => b && a.indexOf(b) === i).sort((a, b) => String(a).localeCompare(String(b), 'cs', { numeric: true })).join('|'); if (bl && props_().getProperty('BUILDINGS') !== bl) props_().setProperty('BUILDINGS', bl); } catch (e) {}
   const list = meters_().filter(m => canSee_(P, m)).map(m => {
     const sx = sm[m.id], lastVal = sx && sx.t ? { value: sx.v, time: new Date(sx.t), who: sx.w } : null;
     // fotka bez hodnoty se nepočítá jako splněný odečet, dokud se hodnota nedoplní
