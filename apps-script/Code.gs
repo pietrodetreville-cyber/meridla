@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.48.1';
+const SCRIPT_VERSION = '1.49.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -144,7 +144,7 @@ function clearAppCache() { bustAll_(); try { SpreadsheetApp.getActive().toast('M
 function formatMeterRows() { formatMeterRows_(); try { SpreadsheetApp.getActive().toast('Měřidla jsou obarvená: zelená = dodavatel, žlutá = interní.', 'Hotovo', 6); } catch (e) {} }
 function onOpen() {
   ensureSupplierCol_(); formatMeterRows_();
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obnovit data v aplikaci (vymazat mezipaměť)', 'clearAppCache').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addSubMenu(SpreadsheetApp.getUi().createMenu('Doklady').addItem('Otevřít soubor dokladů', 'openDocsFile').addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc')).addItem('Zkontrolovat oprávnění lidí', 'checkPeople').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obnovit data v aplikaci (vymazat mezipaměť)', 'clearAppCache').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addSubMenu(SpreadsheetApp.getUi().createMenu('Doklady').addItem('Otevřít soubor dokladů', 'openDocsFile').addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog').addItem('Obnovit přehled dokladů', 'refreshDash').addItem('Nastavit čtenáře přehledu (výbor)', 'setDashViewers').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc')).addItem('Zkontrolovat oprávnění lidí', 'checkPeople').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -526,9 +526,9 @@ function doPost(e) {
   if (['read', 'adminCheck', 'placeUpload', 'backfill'].indexOf(body.action) >= 0 && (!P.edit || !mine(body.id))) return denied();
   if (body.action === 'paperUpload' && !P.editAll) return denied(); // arch se týká všech budov
   // doklady (paragony)
-  if (body.action === 'receipt') return P.docs || P.acc ? ok_(receiptSave_(body, who)) : denied();
+  if (body.action === 'receipt') { if (!(P.docs || P.acc)) return denied(); const rr = receiptSave_(body, who); if (rr.ok && !rr.dup) dashRefreshSafe_(); return ok_(rr); }
   if (body.action === 'receiptRead') return P.docs || P.acc ? ok_(receiptRead_(body.photo)) : denied();
-  if (body.action === 'receiptsSend') return P.acc ? ok_(receiptsSend_(body, who)) : denied();
+  if (body.action === 'receiptsSend') { if (!P.acc) return denied(); const rs = receiptsSend_(body, who); if (rs.ok && rs.count) dashRefreshSafe_(); return ok_(rs); }
   if (body.action === 'lock') return P.edit && mine(body.id) ? ok_(meterLock_(body, who)) : denied();
   if (body.action === 'editReading') return P.edit ? ok_(editReading_(body, P, who)) : denied();
   if (body.action === 'excludeReading') return P.edit ? ok_(excludeReading_(body, P, who)) : denied();

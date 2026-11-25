@@ -34,7 +34,7 @@ function docsSS_() {
 }
 // menu v souboru dokladů (instalovaný spouštěč při otevření)
 function docsOnOpen() {
-  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc').addToUi();
+  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog').addItem('Obnovit přehled dokladů', 'refreshDash').addItem('Nastavit čtenáře přehledu (výbor)', 'setDashViewers').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc').addToUi();
 }
 // z menu tabulky měřidel: odkaz na soubor dokladů
 function openDocsFile() {
@@ -329,6 +329,7 @@ function receiptsDialogSend(message, extra) {
   const r = receiptsSendCore_(Session.getActiveUser().getEmail() || 'správce (tabulka)', row => row[COL_DSEL - 1] === true, message, extra);
   if (!r.ok) return r.error === 'noaccountant' ? 'Nejdřív nastav e-mail účetní.' : r.error === 'email' ? 'E-mail navíc nevypadá jako platná adresa.' : 'Odeslání se nepovedlo.';
   if (!r.count) return r.skipped ? 'Vybrané doklady už byly odeslané.' : 'Nic není vybráno.';
+  dashRefreshSafe_();
   return 'Odesláno ' + r.count + ' dokladů na ' + r.to + (r.cc && r.cc.length ? ' (v kopii ' + r.cc.join(', ') + ')' : '') + ' a zapsáno do listu Faktury.' + (r.more ? ' Zbývá ještě ' + r.more + ' vybraných, pošli je znovu.' : '');
 }
 function setAccountantCc() {

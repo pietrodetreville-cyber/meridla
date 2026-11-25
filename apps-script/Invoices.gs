@@ -61,7 +61,8 @@ function invUiRead(id) {
 }
 
 // registrace faktury: zápis do listu Doklady (typ faktura), interní číslo, přejmenování a přesun PDF do složky Doklady
-function invUiRegister(d) {
+function invUiRegister(d) { const r = invUiRegisterCore_(d); if (r.ok) dashRefreshSafe_(); return r; }
+function invUiRegisterCore_(d) {
   const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   const parse = v => { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))) return null; try { return Utilities.parseDate(v + ' 12:00', tz, 'yyyy-MM-dd HH:mm'); } catch (e) { return null; } };
   const amount = Math.round(docNum_(d.amount) * 100) / 100, issued = parse(d.issued), duzp = parse(d.duzp), due = parse(d.due);
