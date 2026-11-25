@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.52.0';
+const SCRIPT_VERSION = '1.53.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -872,7 +872,7 @@ function recordImage_(fid, P) {
     } else {
       // fotka dokladu (list Doklady) jen pro ty, kdo smí zapisovat
       const dss = docsSSIfExists_(), ds = dss && dss.getSheetByName(SHEET_DOCS);
-      const inDocs = !!ds && ds.getLastRow() > 1 && docRows_(ds, 8).some(r => String(r[7]).indexOf(fid) >= 0);
+      const inDocs = !!ds && ds.getLastRow() > 1 && docRows_(ds).some(r => String(r[7]).indexOf(fid) >= 0);
       if (!inDocs || (P && !(P.docs || P.acc))) return { ok: false, error: 'nofile' };
     }
     const r = UrlFetchApp.fetch('https://drive.google.com/thumbnail?id=' + fid + '&sz=w1600', { headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, muteHttpExceptions: true });

@@ -52,11 +52,43 @@ function openDocsFile() {
   SpreadsheetApp.getUi().showModalDialog(html, 'Soubor dokladů');
 }
 const DOCS_HEAD = ['Zapsáno', 'Datum dokladu', 'Částka (Kč)', 'Obchod / dodavatel', 'Účel', 'Budova', 'Kdo', 'Fotka', 'Stav', 'ID', 'Poznámka', 'Odesláno účetní', 'Vybrat k odeslání', 'Dávka', 'Zpráva pro účetní', 'Číslo dokladu', 'Typ', 'Číslo faktury', 'DUZP', 'Splatnost'];
+// Sloupce listu Doklady se hledají podle NÁZVŮ v hlavičce, pořadí sloupců si lze v tabulce libovolně přeskládat.
+// Uvnitř skriptu má každý řádek pevné „vnitřní“ pořadí podle DOCS_HEAD (r[0] = Zapsáno, r[7] = Fotka …, COL_D* = pozice 1..20).
+// Sloupec, který v hlavičce chybí, se přidá na konec. Pár obvyklých přejmenování se pozná (DOCS_ALIAS).
+const DOCS_ALIAS = { 'obchod / dodavatel': ['dodavatel', 'obchod'], 'kdo': ['zapsal(a)', 'zapsal'], 'fotka': ['doklad', 'soubor'], 'částka (kč)': ['částka'], 'odesláno účetní': ['odesláno'], 'vybrat k odeslání': ['vybrat', 'odeslat'] };
+const DOC_COLS_MEMO_ = {};
+const hnorm_ = h => String(h || '').normalize('NFC').trim().toLowerCase();
+// skutečná čísla sloupců (1..) pro vnitřní pořadí DOCS_HEAD; chybějící hlavičky doplní na konec
+function docCols_(sh) {
+  const key = sh.getSheetId ? String(sh.getSheetId()) : 'x';
+  if (DOC_COLS_MEMO_[key]) return DOC_COLS_MEMO_[key];
+  const last = sh.getLastColumn(), head = last ? sh.getRange(1, 1, 1, last).getValues()[0].map(hnorm_) : [];
+  const added = [];
+  const cols = DOCS_HEAD.map(name => {
+    const n = hnorm_(name);
+    let i = head.indexOf(n);
+    if (i < 0) (DOCS_ALIAS[n] || []).some(a => (i = head.indexOf(a)) >= 0);
+    // bez klíčových sloupců by se doklady mohly poslat znovu nebo ztratit odkaz: radši chyba než nový prázdný sloupec
+    if (i < 0 && sh.getLastRow() > 1 && ['stav', 'id', 'fotka'].indexOf(n) >= 0) throw new Error('V listu Doklady chybí sloupec „' + name + '“ (asi je přejmenovaný). Vrať mu prosím název „' + name + '“, pořadí sloupců může být libovolné.');
+    if (i < 0) { head.push(n); i = head.length - 1; sh.getRange(1, i + 1).setValue(name).setFontWeight('bold'); added.push(name); }
+    return i + 1;
+  });
+  cols.added = added; cols.width = head.length;
+  return (DOC_COLS_MEMO_[key] = cols);
+}
+// skutečný sloupec pro vnitřní pozici k (1..20, např. COL_DSEL nebo 8 = Fotka)
+function dc_(sh, k) { return docCols_(sh)[k - 1]; }
+// nový řádek: hodnoty ve vnitřním pořadí se zapíšou do správných sloupců
+function docAppend_(sh, vals) {
+  const c = docCols_(sh), row = new Array(Math.max(c.width, sh.getLastColumn())).fill('');
+  vals.forEach((v, k) => { if (k < c.length) row[c[k] - 1] = v; });
+  sh.appendRow(row);
+  return sh.getLastRow();
+}
 // u odeslaných dokladů zaškrtávátko k odeslání zmizí (odeslat jde jen jednou)
 function clearSentChecks_(sh) {
-  const n = sh.getLastRow() - 1; if (n < 1 || sh.getLastColumn() < COL_DSEL) return 0;
-  const v = sh.getRange(2, 1, n, COL_DSEL).getValues(), a1 = [];
-  v.forEach((r, i) => { if (/^odesl/i.test(String(r[8] || '')) && r[COL_DSEL - 1] !== '') a1.push(sh.getRange(i + 2, COL_DSEL).getA1Notation()); });
+  const v = docRows_(sh), a1 = [], col = dc_(sh, COL_DSEL);
+  v.forEach((r, i) => { if (/^odesl/i.test(String(r[8] || '')) && r[COL_DSEL - 1] !== '') a1.push(sh.getRange(i + 2, col).getA1Notation()); });
   if (a1.length) sh.getRangeList(a1).removeCheckboxes().clearContent();
   return a1.length;
 }
@@ -68,11 +100,13 @@ function setPhotoLink_(sh, row, col, label, url) {
   try { sh.getRange(row, col).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(label).setLinkUrl(url).build()); }
   catch (e) { sh.getRange(row, col).setValue(url); }
 }
-// řádky listu Doklady od 2. řádku; ve sloupci Fotka (H) je vždy adresa fotky (z odkazu, nebo z textu u starých řádků)
-function docRows_(sh, width) {
+// řádky listu Doklady od 2. řádku ve vnitřním pořadí DOCS_HEAD (bez ohledu na pořadí sloupců v tabulce);
+// v r[7] (Fotka) je vždy adresa souboru (z odkazu, nebo z textu u starých řádků)
+function docRows_(sh) {
   const n = sh.getLastRow() - 1; if (n < 1) return [];
-  const v = sh.getRange(2, 1, n, width).getValues();
-  try { const rt = sh.getRange(2, 8, n, 1).getRichTextValues(); v.forEach((r, i) => { const u = rt[i] && rt[i][0] && rt[i][0].getLinkUrl(); if (u) r[7] = u; }); } catch (e) {}
+  const c = docCols_(sh), raw = sh.getRange(2, 1, n, Math.max(sh.getLastColumn(), 1)).getValues();
+  const v = raw.map(r => c.map(k => r[k - 1] === undefined ? '' : r[k - 1]));
+  try { const rt = sh.getRange(2, c[7], n, 1).getRichTextValues(); v.forEach((r, i) => { const u = rt[i] && rt[i][0] && rt[i][0].getLinkUrl(); if (u) r[7] = u; }); } catch (e) {}
   return v;
 }
 // dřívější řádky s dlouhou adresou ve sloupci se převedou na krátký odkaz
@@ -87,21 +121,21 @@ function docNumPrefix_(date) { return Utilities.formatDate(date, SpreadsheetApp.
 function nextDocNum_(sh, date, taken) {
   const pre = docNumPrefix_(date) + '-';
   let max = 0;
-  const nums = (sh.getLastRow() > 1 && sh.getLastColumn() >= COL_DNUM ? sh.getRange(2, COL_DNUM, sh.getLastRow() - 1, 1).getValues().map(r => String(r[0])) : []).concat(taken || []);
+  const nums = (sh.getLastRow() > 1 ? sh.getRange(2, dc_(sh, COL_DNUM), sh.getLastRow() - 1, 1).getValues().map(r => String(r[0])) : []).concat(taken || []);
   nums.forEach(n => { if (n.indexOf(pre) === 0) { const k = Number(n.slice(pre.length)); if (k > max) max = k; } });
   return pre + String(max + 1).padStart(3, '0');
 }
 // dřívějším dokladům bez čísla se čísla přidělí podle data dokladu a jejich fotky se přejmenují
 function numberOldDocs_(sh) {
   if (sh.getLastRow() < 2) return;
-  const v = docRows_(sh, COL_DNUM), todo = [];
+  const v = docRows_(sh), todo = [];
   v.forEach((r, i) => { if (r[9] && !String(r[COL_DNUM - 1] || '').trim()) todo.push({ n: i + 2, r: r }); });
   todo.sort((a, b) => new Date(a.r[1]) - new Date(b.r[1]) || new Date(a.r[0]) - new Date(b.r[0]));
   const taken = [];
   todo.forEach(x => {
     const d = Object.prototype.toString.call(x.r[1]) === '[object Date]' ? x.r[1] : new Date(x.r[1]);
     const num = nextDocNum_(sh, isNaN(d) ? new Date() : d, taken); taken.push(num);
-    sh.getRange(x.n, COL_DNUM).setValue(num);
+    sh.getRange(x.n, dc_(sh, COL_DNUM)).setValue(num);
     try { const f = DriveApp.getFileById(driveId_(x.r[7])); f.setName(num + docExt_(f.getMimeType())); } catch (e) {}
   });
 }
@@ -115,14 +149,16 @@ function docsSheet_() {
     sh.appendRow(DOCS_HEAD); sh.setFrozenRows(1); sh.getRange(1, 1, 1, DOCS_HEAD.length).setFontWeight('bold');
     sh.getRange('B:B').setNumberFormat('d. M. yyyy'); sh.getRange('C:C').setNumberFormat('#,##0.00');
   }
-  if (sh.getLastColumn() < COL_DDUE || !sh.getRange(1, COL_DDUE).getValue()) { sh.getRange('S:T').setNumberFormat('d. M. yyyy'); }
-  [[COL_DBATCH, 'Dávka'], [COL_DMSG, 'Zpráva pro účetní'], [COL_DTYPE, 'Typ'], [COL_DINVNO, 'Číslo faktury'], [COL_DDUZP, 'DUZP'], [COL_DDUE, 'Splatnost']].forEach(([c, n]) => { if (sh.getLastColumn() < c || !sh.getRange(1, c).getValue()) sh.getRange(1, c).setValue(n).setFontWeight('bold'); });
-  if (sh.getLastColumn() < COL_DNUM || !sh.getRange(1, COL_DNUM).getValue()) { sh.getRange(1, COL_DNUM).setValue('Číslo dokladu').setFontWeight('bold'); numberOldDocs_(sh); }
-  linkifyPhotos_(sh, 8, COL_DNUM);
-  if (sh.getLastColumn() < COL_DSEL || !sh.getRange(1, COL_DSEL).getValue()) {
-    sh.getRange(1, COL_DSEL).setValue('Vybrat k odeslání').setFontWeight('bold');
-    if (sh.getLastRow() > 1) sh.getRange(2, COL_DSEL, sh.getLastRow() - 1, 1).insertCheckboxes();
+  const c = docCols_(sh), added = c.added;
+  if (added.indexOf('DUZP') >= 0) sh.getRange(2, c[COL_DDUZP - 1], sh.getMaxRows() - 1, 1).setNumberFormat('d. M. yyyy');
+  if (added.indexOf('Splatnost') >= 0) sh.getRange(2, c[COL_DDUE - 1], sh.getMaxRows() - 1, 1).setNumberFormat('d. M. yyyy');
+  if (added.indexOf('Číslo dokladu') >= 0) numberOldDocs_(sh);
+  linkifyPhotos_(sh, c[7], c[COL_DNUM - 1]);
+  if (added.indexOf('Vybrat k odeslání') >= 0 && sh.getLastRow() > 1) {
+    const st = docRows_(sh);
+    st.forEach((r, i) => { if (r[9] && !/^odesl/i.test(String(r[8] || ''))) sh.getRange(i + 2, c[COL_DSEL - 1]).insertCheckboxes(); });
   }
+  added.length = 0; // doplnění hlavičky jen jednou
   return sh;
 }
 const fmtKc_ = x => (Math.round((Number(x) || 0) * 100) / 100).toFixed(2).replace('.', ',').replace(/\B(?=(\d{3})+(?!\d))/g, ' ') + ' Kč';
@@ -140,12 +176,12 @@ function receiptSave_(body, who) {
   const lock = LockService.getScriptLock(); lock.waitLock(20000);
   try {
     const sh = docsSheet_();
-    if (sh.getLastRow() > 1 && sh.getRange(2, 10, sh.getLastRow() - 1, 1).getValues().some(r => String(r[0]) === rid)) return { ok: true, dup: true, rid: rid };
+    if (sh.getLastRow() > 1 && sh.getRange(2, dc_(sh, 10), sh.getLastRow() - 1, 1).getValues().some(r => String(r[0]) === rid)) return { ok: true, dup: true, rid: rid };
     const num = nextDocNum_(sh, date), name = num + '.jpg';
     const url = child_(driveRoot_(), DOCS_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', name)).getUrl();
-    sh.appendRow([new Date(), date, amount, String(body.vendor || '').slice(0, 120), String(body.purpose).slice(0, 200), String(body.building || '').slice(0, 40), who, url, 'nový', rid, String(body.note || '').slice(0, 300), '', false, '', '', num, 'paragon']);
-    sh.getRange(sh.getLastRow(), COL_DSEL).insertCheckboxes();
-    setPhotoLink_(sh, sh.getLastRow(), 8, '📷 ' + num, url);
+    const row = docAppend_(sh, [new Date(), date, amount, String(body.vendor || '').slice(0, 120), String(body.purpose).slice(0, 200), String(body.building || '').slice(0, 40), who, url, 'nový', rid, String(body.note || '').slice(0, 300), '', false, '', '', num, 'paragon']);
+    sh.getRange(row, dc_(sh, COL_DSEL)).insertCheckboxes();
+    setPhotoLink_(sh, row, dc_(sh, 8), '📷 ' + num, url);
     return { ok: true, rid: rid, num: num };
   } finally { lock.releaseLock(); }
 }
@@ -155,7 +191,7 @@ function receiptsList_(P) {
   const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
   if (!sh || sh.getLastRow() < 2) return { ok: true, items: [], accountant: !!props_().getProperty('ACCOUNTANT') };
   const all = !P || P.acc, n = sh.getLastRow() - 1;
-  const v = docRows_(sh, Math.max(COL_DDUE, sh.getLastColumn())).filter(r => all || String(r[6]) === P.name).slice(-60);
+  const v = docRows_(sh).filter(r => all || String(r[6]) === P.name).slice(-60);
   const iso = x => x && Object.prototype.toString.call(x) === '[object Date]' ? x.toISOString() : String(x || '');
   const items = v.filter(r => r[9]).map(r => ({ rid: String(r[9]), num: String(r[COL_DNUM - 1] || ''), date: iso(r[1]), amount: Number(r[2]), vendor: String(r[3] || ''), purpose: String(r[4] || ''), building: String(r[5] || ''), who: String(r[6] || ''), pid: driveId_(r[7]), status: String(r[8] || ''), sent: iso(r[11]), type: String(r[COL_DTYPE - 1] || 'paragon'), invNo: String(r[COL_DINVNO - 1] || '') })).reverse();
   return { ok: true, items: items, total: n, accountant: !!props_().getProperty('ACCOUNTANT') };
@@ -245,8 +281,7 @@ function receiptsSendCore_(who, pick, message, extra) {
   if (!sh || sh.getLastRow() < 2) return { ok: true, count: 0 };
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
-    const width = Math.max(DOCS_HEAD.length, sh.getLastColumn());
-    const v = docRows_(sh, width), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+    const v = docRows_(sh), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
     const chosen = [], skipped = [];
     v.forEach((r, i) => { if (r[9] && pick(r)) (/^odesl/i.test(String(r[8] || '')) ? skipped : chosen).push({ n: i + 2, r: r }); });
     if (!chosen.length) return { ok: true, count: 0, skipped: skipped.length };
@@ -263,7 +298,6 @@ function receiptsSendCore_(who, pick, message, extra) {
       items.push(it);
       lines.push(num + ' · ' + d + ' · ' + fmtKc_(r[2]) + ' · ' + (r[3] || '–') + (it.inv ? ' · ' + it.inv : '') + ' · ' + r[4] + (r[5] ? ' · ' + r[5] : '') + ' · zapsal(a) ' + r[6] + (r[10] ? ' · ' + r[10] : '') + (it.nophoto ? ' (fotku se nepodařilo přiložit)' : ''));
     });
-    sh.getRange(1, COL_DMSG).getValue() || docsSheet_(); // doplní hlavičky Dávka / Zpráva, pokud chybí
     const stamp = new Date(), msg = String(message || '').trim().slice(0, 500), batchId = Utilities.formatDate(stamp, tz, 'yyyyMMdd-HHmmss');
     const mail = {
       to: to, name: 'SVJ Od Vysoké', subject: envTag_() + 'SVJ Od Vysoké – doklady k zaúčtování (' + batch.length + ')',
@@ -274,7 +308,7 @@ function receiptsSendCore_(who, pick, message, extra) {
     if (cc.length) mail.cc = cc.join(',');
     MailApp.sendEmail(mail);
     const note = msg + (extraList.length ? (msg ? ' ' : '') + '(kopie: ' + extraList.join(', ') + ')' : '');
-    batch.forEach(x => { sh.getRange(x.n, 9).setValue('odesláno'); sh.getRange(x.n, 12).setValue(stamp); sh.getRange(x.n, COL_DSEL).removeCheckboxes().clearContent(); sh.getRange(x.n, COL_DBATCH).setValue(batchId); sh.getRange(x.n, COL_DMSG).setValue(note); });
+    batch.forEach(x => { sh.getRange(x.n, dc_(sh, 9)).setValue('odesláno'); sh.getRange(x.n, dc_(sh, 12)).setValue(stamp); sh.getRange(x.n, dc_(sh, COL_DSEL)).removeCheckboxes().clearContent(); sh.getRange(x.n, dc_(sh, COL_DBATCH)).setValue(batchId); sh.getRange(x.n, dc_(sh, COL_DMSG)).setValue(note); });
     invoicesAppend_(batch.map(x => x.r), stamp, batchId, note);
     return { ok: true, count: batch.length, to: to, cc: cc, more: chosen.length - batch.length, skipped: skipped.length };
   } finally { lock.releaseLock(); }
@@ -331,8 +365,8 @@ function setAccountant() {
 }
 function selectedCount_() {
   const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
-  if (!sh || sh.getLastRow() < 2 || sh.getLastColumn() < COL_DSEL) return 0;
-  return sh.getRange(2, 1, sh.getLastRow() - 1, COL_DSEL).getValues().filter(r => r[COL_DSEL - 1] === true && r[9] && !/^odesl/i.test(String(r[8] || ''))).length;
+  if (!sh || sh.getLastRow() < 2) return 0;
+  return docRows_(sh).filter(r => r[COL_DSEL - 1] === true && r[9] && !/^odesl/i.test(String(r[8] || ''))).length;
 }
 function sendReceipts() {
   const ui = SpreadsheetApp.getUi(), n = selectedCount_(), to = props_().getProperty('ACCOUNTANT');

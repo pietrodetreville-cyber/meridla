@@ -77,7 +77,7 @@ function invUiRegisterCore_(d) {
   const vendor = [String(d.vendor || '').trim(), String(d.ico || '').replace(/\s/g, '') ? 'IČO ' + String(d.ico).replace(/\s/g, '') : ''].filter(Boolean).join(', ');
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
-    const sh = docsSheet_(), rows = docRows_(sh, Math.max(DOCS_HEAD.length, sh.getLastColumn()));
+    const sh = docsSheet_(), rows = docRows_(sh);
     // stejná faktura (číslo faktury a dodavatel) už zaregistrovaná?
     const invNo = String(d.invNo || '').trim();
     if (invNo && !d.force) {
@@ -98,10 +98,9 @@ function invUiRegisterCore_(d) {
     try { f.moveTo(child_(driveRoot_(), DOCS_FOLDER)); } catch (e) {}
     const who = Session.getActiveUser().getEmail() || 'správce';
     const note = [String(d.note || '').trim(), 'soubor: ' + orig].filter(Boolean).join(' · ');
-    sh.appendRow([new Date(), issued || duzp, amount, vendor, String(d.purpose).trim().slice(0, 200), String(d.building || '').slice(0, 40), who, f.getUrl(), 'nový', rid, note.slice(0, 300), '', false, '', '', num, 'faktura', invNo, duzp || '', due || '']);
-    const row = sh.getLastRow();
-    sh.getRange(row, COL_DSEL).insertCheckboxes();
-    setPhotoLink_(sh, row, 8, '📄 ' + num, f.getUrl());
+    const row = docAppend_(sh, [new Date(), issued || duzp, amount, vendor, String(d.purpose).trim().slice(0, 200), String(d.building || '').slice(0, 40), who, f.getUrl(), 'nový', rid, note.slice(0, 300), '', false, '', '', num, 'faktura', invNo, duzp || '', due || '']);
+    sh.getRange(row, dc_(sh, COL_DSEL)).insertCheckboxes();
+    setPhotoLink_(sh, row, dc_(sh, 8), '📄 ' + num, f.getUrl());
     return { ok: true, num: num, name: f.getName() };
   } finally { lock.releaseLock(); }
 }

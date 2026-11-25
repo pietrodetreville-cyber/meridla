@@ -10,7 +10,7 @@ function dashRefresh_() {
   if (!src) return;
   try { clearSentChecks_(src); } catch (e) {}
   const ss = dashSS_(), tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
-  const rows = docRows_(src, Math.max(DOCS_HEAD.length, src.getLastColumn())).filter(r => r[9]);
+  const rows = docRows_(src).filter(r => r[9]);
   const isD = x => Object.prototype.toString.call(x) === '[object Date]';
   const sent = r => /^odesl/i.test(String(r[8] || ''));
   const num = r => String(r[COL_DNUM - 1] || '');
