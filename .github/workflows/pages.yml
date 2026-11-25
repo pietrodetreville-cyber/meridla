@@ -33,7 +33,7 @@ jobs:
       cancel-in-progress: true
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy1.outputs.page_url || steps.deploy2.outputs.page_url || steps.deployment.outputs.page_url }}
     steps:
       - name: Stažení větve main (ostrá verze)
         uses: actions/checkout@v6
@@ -61,5 +61,28 @@ jobs:
         with:
           path: _site
 
+      # GitHub občas nahraný balíček webu hned po nahrání ještě „nevidí“ (No artifacts named github-pages):
+      # počkat a zkusit nasazení až třikrát
+      - name: Krátké čekání, než GitHub balíček zaeviduje
+        run: sleep 30
+
+      - id: deploy1
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Čekání před druhým pokusem
+        if: steps.deploy1.outcome == 'failure'
+        run: sleep 90
+
+      - id: deploy2
+        if: steps.deploy1.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v5
+
+      - name: Čekání před třetím pokusem
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 180
+
       - id: deployment
+        if: steps.deploy1.outcome == 'failure' && steps.deploy2.outcome == 'failure'
         uses: actions/deploy-pages@v5
