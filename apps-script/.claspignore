@@ -3,6 +3,8 @@
 !Import.gs
 !Records.gs
 !Receipts.gs
+!Invoices.gs
 !appsscript.json
 
 !ImportUi.html
+!InvoiceUi.html

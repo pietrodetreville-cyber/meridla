@@ -34,7 +34,7 @@ function docsSS_() {
 }
 // menu v souboru dokladů (instalovaný spouštěč při otevření)
 function docsOnOpen() {
-  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc').addToUi();
+  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc').addToUi();
 }
 // z menu tabulky měřidel: odkaz na soubor dokladů
 function openDocsFile() {
@@ -42,8 +42,8 @@ function openDocsFile() {
   const html = HtmlService.createHtmlOutput('<p style="font:14px Arial">Doklady a faktury jsou v samostatné tabulce:</p><p style="font:14px Arial"><a href="' + url + '" target="_blank">' + ss.getName() + '</a></p>').setWidth(420).setHeight(120);
   SpreadsheetApp.getUi().showModalDialog(html, 'Soubor dokladů');
 }
-const DOCS_HEAD = ['Zapsáno', 'Datum dokladu', 'Částka (Kč)', 'Obchod / dodavatel', 'Účel', 'Budova', 'Kdo', 'Fotka', 'Stav', 'ID', 'Poznámka', 'Odesláno účetní', 'Vybrat k odeslání', 'Dávka', 'Zpráva pro účetní', 'Číslo dokladu'];
-const COL_DSEL = 13, COL_DBATCH = 14, COL_DMSG = 15, COL_DNUM = 16;
+const DOCS_HEAD = ['Zapsáno', 'Datum dokladu', 'Částka (Kč)', 'Obchod / dodavatel', 'Účel', 'Budova', 'Kdo', 'Fotka', 'Stav', 'ID', 'Poznámka', 'Odesláno účetní', 'Vybrat k odeslání', 'Dávka', 'Zpráva pro účetní', 'Číslo dokladu', 'Typ', 'Číslo faktury', 'DUZP', 'Splatnost'];
+const COL_DSEL = 13, COL_DBATCH = 14, COL_DMSG = 15, COL_DNUM = 16, COL_DTYPE = 17, COL_DINVNO = 18, COL_DDUZP = 19, COL_DDUE = 20;
 // fotka v buňce: krátký text (📷 číslo dokladu) s odkazem místo dlouhé adresy
 function setPhotoLink_(sh, row, col, label, url) {
   try { sh.getRange(row, col).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(label).setLinkUrl(url).build()); }
@@ -96,7 +96,8 @@ function docsSheet_() {
     sh.appendRow(DOCS_HEAD); sh.setFrozenRows(1); sh.getRange(1, 1, 1, DOCS_HEAD.length).setFontWeight('bold');
     sh.getRange('B:B').setNumberFormat('d. M. yyyy'); sh.getRange('C:C').setNumberFormat('#,##0.00');
   }
-  [[COL_DBATCH, 'Dávka'], [COL_DMSG, 'Zpráva pro účetní']].forEach(([c, n]) => { if (sh.getLastColumn() < c || !sh.getRange(1, c).getValue()) sh.getRange(1, c).setValue(n).setFontWeight('bold'); });
+  if (sh.getLastColumn() < COL_DDUE || !sh.getRange(1, COL_DDUE).getValue()) { sh.getRange('S:T').setNumberFormat('d. M. yyyy'); }
+  [[COL_DBATCH, 'Dávka'], [COL_DMSG, 'Zpráva pro účetní'], [COL_DTYPE, 'Typ'], [COL_DINVNO, 'Číslo faktury'], [COL_DDUZP, 'DUZP'], [COL_DDUE, 'Splatnost']].forEach(([c, n]) => { if (sh.getLastColumn() < c || !sh.getRange(1, c).getValue()) sh.getRange(1, c).setValue(n).setFontWeight('bold'); });
   if (sh.getLastColumn() < COL_DNUM || !sh.getRange(1, COL_DNUM).getValue()) { sh.getRange(1, COL_DNUM).setValue('Číslo dokladu').setFontWeight('bold'); numberOldDocs_(sh); }
   linkifyPhotos_(sh, 8, COL_DNUM);
   if (sh.getLastColumn() < COL_DSEL || !sh.getRange(1, COL_DSEL).getValue()) {
@@ -123,7 +124,7 @@ function receiptSave_(body, who) {
     if (sh.getLastRow() > 1 && sh.getRange(2, 10, sh.getLastRow() - 1, 1).getValues().some(r => String(r[0]) === rid)) return { ok: true, dup: true, rid: rid };
     const num = nextDocNum_(sh, date), name = num + '.jpg';
     const url = child_(driveRoot_(), DOCS_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(body.photo), 'image/jpeg', name)).getUrl();
-    sh.appendRow([new Date(), date, amount, String(body.vendor || '').slice(0, 120), String(body.purpose).slice(0, 200), String(body.building || '').slice(0, 40), who, url, 'nový', rid, String(body.note || '').slice(0, 300), '', false, '', '', num]);
+    sh.appendRow([new Date(), date, amount, String(body.vendor || '').slice(0, 120), String(body.purpose).slice(0, 200), String(body.building || '').slice(0, 40), who, url, 'nový', rid, String(body.note || '').slice(0, 300), '', false, '', '', num, 'paragon']);
     sh.getRange(sh.getLastRow(), COL_DSEL).insertCheckboxes();
     setPhotoLink_(sh, sh.getLastRow(), 8, '📷 ' + num, url);
     return { ok: true, rid: rid, num: num };
@@ -135,9 +136,9 @@ function receiptsList_(P) {
   const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
   if (!sh || sh.getLastRow() < 2) return { ok: true, items: [], accountant: !!props_().getProperty('ACCOUNTANT') };
   const all = !P || P.acc, n = sh.getLastRow() - 1;
-  const v = docRows_(sh, Math.max(COL_DNUM, 12)).filter(r => all || String(r[6]) === P.name).slice(-60);
+  const v = docRows_(sh, Math.max(COL_DDUE, sh.getLastColumn())).filter(r => all || String(r[6]) === P.name).slice(-60);
   const iso = x => x && Object.prototype.toString.call(x) === '[object Date]' ? x.toISOString() : String(x || '');
-  const items = v.filter(r => r[9]).map(r => ({ rid: String(r[9]), num: String(r[COL_DNUM - 1] || ''), date: iso(r[1]), amount: Number(r[2]), vendor: String(r[3] || ''), purpose: String(r[4] || ''), building: String(r[5] || ''), who: String(r[6] || ''), pid: driveId_(r[7]), status: String(r[8] || ''), sent: iso(r[11]) })).reverse();
+  const items = v.filter(r => r[9]).map(r => ({ rid: String(r[9]), num: String(r[COL_DNUM - 1] || ''), date: iso(r[1]), amount: Number(r[2]), vendor: String(r[3] || ''), purpose: String(r[4] || ''), building: String(r[5] || ''), who: String(r[6] || ''), pid: driveId_(r[7]), status: String(r[8] || ''), sent: iso(r[11]), type: String(r[COL_DTYPE - 1] || 'paragon'), invNo: String(r[COL_DINVNO - 1] || '') })).reverse();
   return { ok: true, items: items, total: n, accountant: !!props_().getProperty('ACCOUNTANT') };
 }
 
@@ -184,9 +185,10 @@ function receiptsMailHtml_(rows, sum, msg, who, batchId) {
   const item = (x, k) => '<tr><td style="padding:12px 14px;border-bottom:1px solid #e5e9ef;vertical-align:top;word-break:break-word;' + F + '">' +
     '<div style="font-size:12px;color:#8a96a3;margin-bottom:3px"><b style="color:#2563eb">' + escH_(x.num) + '</b> · ' + escH_(x.date) + ' · zapsal(a) ' + escH_(x.who) + '</div>' +
     '<div style="font-size:15px;font-weight:bold;color:#1f2933">' + escH_(x.vendor || '–') + '</div>' +
+    (x.inv ? '<div style="font-size:13px;color:#2563eb">📄 ' + escH_(x.inv) + '</div>' : '') +
     '<div style="font-size:14px;color:#516070">' + escH_(x.purpose) + (x.building ? ' · ' + escH_(x.building) : '') + '</div>' +
     (x.note ? '<div style="font-size:12px;color:#8a96a3;margin-top:2px">' + escH_(x.note) + '</div>' : '') +
-    (x.nophoto ? '<div style="font-size:12px;color:#b42318;margin-top:2px">fotku se nepodařilo přiložit</div>' : '') +
+    (x.nophoto ? '<div style="font-size:12px;color:#b42318;margin-top:2px">přílohu se nepodařilo přiložit</div>' : '') +
     '</td><td style="padding:12px 14px;border-bottom:1px solid #e5e9ef;vertical-align:top;text-align:right;white-space:nowrap;font-size:15px;font-weight:bold;color:#1f2933;' + F + '">' + escH_(fmtKc_(x.amount)) + '</td></tr>';
   const count = rows.length + (rows.length === 1 ? ' doklad' : rows.length < 5 ? ' doklady' : ' dokladů');
   return '<div style="background:#f4f6f9;padding:16px 8px;' + F + '">' +
@@ -225,10 +227,12 @@ function receiptsSendCore_(who, pick, message, extra) {
       const r = x.r, d = Object.prototype.toString.call(r[1]) === '[object Date]' ? Utilities.formatDate(r[1], tz, 'd. M. yyyy') : String(r[1]);
       sum += Number(r[2]) || 0;
       const num = String(r[COL_DNUM - 1] || '').trim() || String(k + 1);
-      const it = { num: num, date: d, amount: r[2], vendor: r[3], purpose: r[4], building: r[5], who: r[6], note: r[10], nophoto: false };
-      try { const f = DriveApp.getFileById(driveId_(r[7])); files.push(f.getBlob().setName(num + '.jpg')); } catch (e) { it.nophoto = true; }
+      const fd = x => Object.prototype.toString.call(x) === '[object Date]' ? Utilities.formatDate(x, tz, 'd. M. yyyy') : String(x || '');
+      const inv = String(r[COL_DTYPE - 1] || '') === 'faktura';
+      const it = { num: num, date: d, amount: r[2], vendor: r[3], purpose: r[4], building: r[5], who: r[6], note: r[10], nophoto: false, inv: inv ? 'Faktura' + (r[COL_DINVNO - 1] ? ' č. ' + r[COL_DINVNO - 1] : '') + (r[COL_DDUZP - 1] ? ' · DUZP ' + fd(r[COL_DDUZP - 1]) : '') + (r[COL_DDUE - 1] ? ' · splatnost ' + fd(r[COL_DDUE - 1]) : '') : '' };
+      try { const f = DriveApp.getFileById(driveId_(r[7])); files.push(f.getBlob().setName(num + (/pdf/i.test(f.getMimeType()) ? '.pdf' : '.jpg'))); } catch (e) { it.nophoto = true; }
       items.push(it);
-      lines.push(num + ' · ' + d + ' · ' + fmtKc_(r[2]) + ' · ' + (r[3] || '–') + ' · ' + r[4] + (r[5] ? ' · ' + r[5] : '') + ' · zapsal(a) ' + r[6] + (r[10] ? ' · ' + r[10] : '') + (it.nophoto ? ' (fotku se nepodařilo přiložit)' : ''));
+      lines.push(num + ' · ' + d + ' · ' + fmtKc_(r[2]) + ' · ' + (r[3] || '–') + (it.inv ? ' · ' + it.inv : '') + ' · ' + r[4] + (r[5] ? ' · ' + r[5] : '') + ' · zapsal(a) ' + r[6] + (r[10] ? ' · ' + r[10] : '') + (it.nophoto ? ' (fotku se nepodařilo přiložit)' : ''));
     });
     sh.getRange(1, COL_DMSG).getValue() || docsSheet_(); // doplní hlavičky Dávka / Zpráva, pokud chybí
     const stamp = new Date(), msg = String(message || '').trim().slice(0, 500), batchId = Utilities.formatDate(stamp, tz, 'yyyyMMdd-HHmmss');
@@ -255,7 +259,7 @@ function receiptsSend_(body, who) {
 
 // ---------- list Faktury: odeslané doklady, řazené podle DUZP ----------
 const SHEET_INV = 'Faktury';
-const INV_HEAD = ['DUZP', 'Datum dokladu', 'Částka (Kč)', 'Dodavatel', 'Účel', 'Budova', 'Doklad (fotka)', 'ID dokladu', 'Odesláno účetní', 'Poznámka', 'Dávka', 'Zpráva pro účetní', 'Číslo dokladu'];
+const INV_HEAD = ['DUZP', 'Datum dokladu', 'Částka (Kč)', 'Dodavatel', 'Účel', 'Budova', 'Doklad (fotka)', 'ID dokladu', 'Odesláno účetní', 'Poznámka', 'Dávka', 'Zpráva pro účetní', 'Číslo dokladu', 'Typ', 'Číslo faktury', 'Splatnost'];
 // list se založí, pokud chybí; pokud už existuje (třeba vlastní), zapisuje se podle názvů sloupců a chybějící sloupce se přidají na konec
 function invoicesAppend_(rows, stamp, batchId, msg) {
   const ss = docsSS_();
@@ -270,13 +274,14 @@ function invoicesAppend_(rows, stamp, batchId, msg) {
   const known = sh.getLastRow() > 1 ? sh.getRange(2, ci[7] + 1, sh.getLastRow() - 1, 1).getValues().map(r => String(r[0])) : [];
   const out = rows.filter(r => known.indexOf(String(r[9])) < 0).map(r => {
     const row = new Array(head.length).fill('');
-    [r[1], r[1], r[2], r[3], r[4], r[5], r[7], String(r[9]), stamp, r[10], batchId || '', msg || '', String(r[COL_DNUM - 1] || '')].forEach((val, k) => { row[ci[k]] = val; }); // DUZP = datum dokladu (lze přepsat)
+    const duzp = Object.prototype.toString.call(r[COL_DDUZP - 1]) === '[object Date]' ? r[COL_DDUZP - 1] : r[1];
+    [duzp, r[1], r[2], r[3], r[4], r[5], r[7], String(r[9]), stamp, r[10], batchId || '', msg || '', String(r[COL_DNUM - 1] || ''), String(r[COL_DTYPE - 1] || 'paragon'), String(r[COL_DINVNO - 1] || ''), r[COL_DDUE - 1] || ''].forEach((val, k) => { row[ci[k]] = val; }); // DUZP = datum dokladu (lze přepsat)
     return row;
   });
   if (out.length) {
     const first = sh.getLastRow() + 1;
     sh.getRange(first, 1, out.length, head.length).setValues(out);
-    out.forEach((row, j) => { const u = String(row[ci[6]] || ''); if (/^https?:/.test(u)) setPhotoLink_(sh, first + j, ci[6] + 1, '📷 ' + (row[ci[12]] || 'fotka'), u); });
+    out.forEach((row, j) => { const u = String(row[ci[6]] || ''); if (/^https?:/.test(u)) setPhotoLink_(sh, first + j, ci[6] + 1, (row[ci[13]] === 'faktura' ? '📄 ' : '📷 ') + (row[ci[12]] || 'fotka'), u); });
   }
   linkifyPhotos_(sh, ci[6] + 1, ci[12] + 1);
   sortInvoices_(sh, ci[0]);

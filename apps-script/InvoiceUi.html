@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+<base target="_top">
+<meta charset="utf-8">
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font:14px/1.35 Arial,Helvetica,sans-serif;color:#1f2933;background:#f4f6f9}
+  .wrap{display:grid;grid-template-columns:260px 1fr 330px;gap:10px;height:100vh;padding:10px}
+  .pane{background:#fff;border:1px solid #d9dee5;border-radius:10px;display:flex;flex-direction:column;min-height:0;min-width:0}
+  .ph{padding:10px 12px;border-bottom:1px solid #e5e9ee;display:flex;gap:8px;align-items:center}
+  .ph b{flex:1}
+  .muted{color:#6b7280;font-size:12px}
+  #list{overflow:auto;flex:1}
+  .it{padding:9px 12px;border-bottom:1px solid #eef1f5;cursor:pointer}
+  .it:hover{background:#f1f5fb}.it.sel{background:#dbeafe}
+  .it .nm{font-weight:bold;word-break:break-word}
+  #prev{flex:1;border:0;width:100%;min-height:0;background:#eef1f5}
+  .form{overflow:auto;flex:1;padding:10px 12px}
+  label{display:block;font-size:12px;color:#516070;margin:8px 0 3px;font-weight:bold}
+  input,select,textarea{width:100%;font:inherit;border:1px solid #c5ccd6;border-radius:6px;padding:6px 7px;background:#fff}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+  button{border:0;border-radius:8px;padding:9px 14px;background:#2563eb;color:#fff;cursor:pointer;font-weight:bold;font:inherit;font-weight:bold}
+  button.sec{background:#e8edf5;color:#1f2933}
+  button:disabled{opacity:.5;cursor:default}
+  .foot{padding:10px 12px;border-top:1px solid #e5e9ee;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  #msg{min-height:18px;font-size:13px;flex-basis:100%}
+  .empty{padding:20px;color:#6b7280}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="pane">
+    <div class="ph"><b>1. PDF ve složce</b><button class="sec" id="reload" type="button" title="Načíst znovu">↻</button></div>
+    <div class="muted" style="padding:6px 12px">Nahraj PDF faktury do složky <a id="folder" href="#" target="_blank">Došlé faktury</a> na Disku.</div>
+    <div id="list"><div class="empty">Načítám…</div></div>
+  </div>
+  <div class="pane">
+    <div class="ph"><b>Náhled</b><span class="muted" id="pname"></span></div>
+    <iframe id="prev" title="Náhled faktury"></iframe>
+  </div>
+  <div class="pane">
+    <div class="ph"><b>2. Údaje faktury</b><button class="sec" id="ai" type="button" disabled>🤖 Přečíst AI</button></div>
+    <div class="form">
+      <label for="vendor">Dodavatel</label><input id="vendor">
+      <div class="row2"><div><label for="ico">IČO</label><input id="ico"></div><div><label for="invNo">Číslo faktury</label><input id="invNo"></div></div>
+      <div class="row2"><div><label for="issued">Datum vystavení</label><input id="issued" type="date"></div><div><label for="duzp">DUZP</label><input id="duzp" type="date"></div></div>
+      <div class="row2"><div><label for="due">Splatnost</label><input id="due" type="date"></div><div><label for="amount">Částka vč. DPH (Kč)</label><input id="amount" inputmode="decimal" placeholder="např. 4 717,29"></div></div>
+      <label for="purpose">Účel (na co)</label><input id="purpose" placeholder="např. elektřina – prádelna 273">
+      <label for="building">Budova (nepovinné)</label><select id="building"></select>
+      <label for="note">Poznámka (nepovinná)</label><textarea id="note" rows="2"></textarea>
+    </div>
+    <div class="foot">
+      <div id="msg" class="muted">Vyber PDF vlevo.</div>
+      <button id="save" type="button" disabled>3. Zaregistrovat</button>
+      <button class="sec" type="button" onclick="google.script.host.close()">Zavřít</button>
+    </div>
+  </div>
+</div>
+<script>
+const $ = id => document.getElementById(id);
+let files = [], sel = null, busy = false;
+function msg(t, kind) { const m = $('msg'); m.textContent = t; m.style.color = kind === 'bad' ? '#b42318' : kind === 'ok' ? '#166534' : '#516070'; }
+function lock(on) { busy = on; ['ai', 'save', 'reload'].forEach(i => { $(i).disabled = on || (i !== 'reload' && !sel); }); }
+function clearForm() { ['vendor', 'ico', 'invNo', 'issued', 'duzp', 'due', 'amount', 'purpose', 'note'].forEach(i => { $(i).value = ''; }); $('building').value = ''; }
+function render() {
+  const l = $('list'); l.textContent = '';
+  if (!files.length) { l.innerHTML = '<div class="empty">Ve složce není žádné PDF. Nahraj fakturu na Disk do složky Došlé faktury a klepni na ↻.</div>'; return; }
+  files.forEach(f => {
+    const d = document.createElement('div'); d.className = 'it' + (sel && sel.id === f.id ? ' sel' : '');
+    const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = f.name;
+    const mt = document.createElement('div'); mt.className = 'muted'; mt.textContent = f.date + ' · ' + f.kb + ' kB';
+    d.append(nm, mt); d.onclick = () => pick(f); l.appendChild(d);
+  });
+}
+function pick(f) {
+  if (busy) return;
+  sel = f; render(); clearForm();
+  $('prev').src = 'https://drive.google.com/file/d/' + encodeURIComponent(f.id) + '/preview';
+  $('pname').textContent = f.name; lock(false);
+  msg('Klepni na „Přečíst AI“, nebo údaje vyplň ručně.');
+}
+function load() {
+  lock(true); $('list').innerHTML = '<div class="empty">Načítám…</div>';
+  google.script.run.withSuccessHandler(r => {
+    files = r.files; $('folder').href = r.folderUrl;
+    const b = $('building'); b.textContent = '';
+    ['', ...r.buildings].forEach(x => { const o = document.createElement('option'); o.value = x; o.textContent = x || '— společné / neurčeno —'; b.appendChild(o); });
+    if (sel && !files.some(f => f.id === sel.id)) { sel = null; $('prev').removeAttribute('src'); $('pname').textContent = ''; }
+    render(); lock(false);
+  }).withFailureHandler(e => { lock(false); $('list').innerHTML = '<div class="empty">Seznam se nepodařilo načíst: ' + e.message + '</div>'; }).invUiList();
+}
+$('reload').onclick = load;
+$('ai').onclick = () => {
+  if (!sel || busy) return;
+  lock(true); msg('AI čte fakturu… (až půl minuty)');
+  google.script.run.withSuccessHandler(r => {
+    lock(false);
+    if (!r.ok) return msg(r.error || 'AI fakturu nepřečetla.', 'bad');
+    const set = (id, v) => { if (v !== null && v !== undefined && v !== '') $(id).value = v; };
+    set('vendor', r.vendor); set('ico', r.ico); set('invNo', r.invNo); set('issued', r.issued); set('duzp', r.duzp); set('due', r.due);
+    if (r.amount !== null && r.amount !== undefined) $('amount').value = String(r.amount).replace('.', ',');
+    if (r.subject && !$('purpose').value) $('purpose').value = r.subject;
+    msg('Předvyplněno. Zkontroluj údaje podle náhledu a doplň účel.');
+  }).withFailureHandler(e => { lock(false); msg('Chyba: ' + e.message, 'bad'); }).invUiRead(sel.id);
+};
+function register(force) {
+  if (!sel || busy) return;
+  const d = { id: sel.id, vendor: $('vendor').value, ico: $('ico').value, invNo: $('invNo').value, issued: $('issued').value, duzp: $('duzp').value, due: $('due').value, amount: $('amount').value, purpose: $('purpose').value, building: $('building').value, note: $('note').value, force: !!force };
+  lock(true); msg('Registruji…');
+  google.script.run.withSuccessHandler(r => {
+    lock(false);
+    if (!r.ok) { if (r.dup && confirm(r.error + '\n\nZaregistrovat přesto?')) return register(true); return msg(r.error || 'Registrace se nepovedla.', 'bad'); }
+    msg('Zaregistrováno jako ' + r.num + '. PDF je přejmenované a přesunuté do složky Doklady. Odešleš ho účetní zaškrtnutím v listu Doklady.', 'ok');
+    sel = null; clearForm(); $('prev').removeAttribute('src'); $('pname').textContent = ''; load();
+  }).withFailureHandler(e => { lock(false); msg('Chyba: ' + e.message, 'bad'); }).invUiRegister(d);
+}
+$('save').onclick = () => register(false);
+load();
+</script>
+</body>
+</html>
