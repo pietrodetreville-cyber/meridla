@@ -383,7 +383,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.49.0';
+const VERSION = '1.49.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -409,7 +409,7 @@ const decText = d => d === 0 ? 'zaokrouhleno na celá čísla' : d === 1 ? 'zaok
 const fmtNum = n => String(n).replace('.', ',');
 const fmtSec = ms => (ms / 1000).toFixed(1).replace('.', ',') + ' s';
 const tm = { l: '', h: '' };
-function paintMs() { $('vms').textContent = [tm.l, tm.h].filter(Boolean).map(x => ' · ' + x).join(''); }
+function paintMs() { if (ENV !== 'test') { $('vms').textContent = ''; return; } $('vms').textContent = [tm.l, tm.h].filter(Boolean).map(x => ' · ' + x).join(''); }
 const parseNum = s => Number(String(s).trim().replace(/\s/g, '').replace(',', '.'));
 function toast(t, ms) { const e = $('toast'); e.textContent = t; e.classList.remove('hide'); clearTimeout(toast.t); toast.t = setTimeout(() => e.classList.add('hide'), ms || 3500); }
 
