@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.47.1';
+const SCRIPT_VERSION = '1.47.2';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -144,7 +144,7 @@ function clearAppCache() { bustAll_(); try { SpreadsheetApp.getActive().toast('M
 function formatMeterRows() { formatMeterRows_(); try { SpreadsheetApp.getActive().toast('Měřidla jsou obarvená: zelená = dodavatel, žlutá = interní.', 'Hotovo', 6); } catch (e) {} }
 function onOpen() {
   ensureSupplierCol_(); formatMeterRows_();
-  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obnovit data v aplikaci (vymazat mezipaměť)', 'clearAppCache').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addSubMenu(SpreadsheetApp.getUi().createMenu('Doklady').addItem('Otevřít soubor dokladů', 'openDocsFile').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc')).addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
+  SpreadsheetApp.getUi().createMenu('Měřidla').addItem('Vygenerovat odkazy pro lidi', 'generateLinks').addItem('Doplnit chybějící id měřidel', 'fillIds_').addItem('Uspořádat Disk (SVJ_app)', 'organizeDrive').addItem('Vytvořit testovací sadu', 'createTestSet').addSubMenu(SpreadsheetApp.getUi().createMenu('Import z papíru').addItem('Otevřít přehled (doporučeno)', 'importUi').addItem('Náhled (nic nezapisuje)', 'importPreview').addItem('Zapsat hodnoty', 'importWrite')).addItem('Pozastavit / znovu zapnout e-maily', 'toggleMails').addItem('Resetovat záznamy (vymaže list Odečty)', 'resetReadings').addItem('Vymazat list Import z papíru', 'resetImportSheet').addItem('Archivovat staré záznamy (starší než 2 roky)', 'archiveOldReadings').addItem('Obnovit data v aplikaci (vymazat mezipaměť)', 'clearAppCache').addItem('Obarvit měřidla (dodavatel zeleně, interní žlutě)', 'formatMeterRows').addSubMenu(SpreadsheetApp.getUi().createMenu('Doklady').addItem('Otevřít soubor dokladů', 'openDocsFile').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc')).addItem('Zkontrolovat oprávnění lidí', 'checkPeople').addItem('Zkontrolovat měřidla', 'checkMeters').addItem('Odeslat kontrolu termínů teď', 'reminder').addItem('Zapnout denní kontrolu (8:00)', 'installReminder').addToUi();
 }
 
 // V listu "Lidé" vyplň jména (sloupec A) a spusť: doplní kódy a hotové odkazy.
@@ -190,11 +190,10 @@ function person_(t) {
   if (master && t === master) return { name: 'Správce', buildings: null, editBuildings: null, edit: true, editAll: true, docs: true, acc: true };
   const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PEOPLE);
   if (!sh || sh.getLastRow() < 2) return null;
-  const v = sh.getRange(1, 1, sh.getLastRow(), 7).getValues();
+  const v = sh.getRange(1, 1, sh.getLastRow(), Math.max(5, sh.getLastColumn())).getValues();
   if (!v[0][3] || v[0][3] === 'Budovy') sh.getRange(1, 4).setValue('Vidí (budovy)');
   if (!v[0][4] || v[0][4] === 'Oprávnění') sh.getRange(1, 5).setValue('Edituje (budovy)');
-  if (!v[0][5]) sh.getRange(1, 6).setValue('Doklady');
-  if (!v[0][6]) sh.getRange(1, 7).setValue('Odesílá účetní');
+  const pc = peopleCols_(sh, v[0]);
   const hit = v.slice(1).find(r => String(r[0]).trim() && r[1] && String(r[1]) === t);
   if (!hit) return null;
   const see = personList_(hit[3]), en = normKey_(hit[4]);
@@ -204,7 +203,26 @@ function person_(t) {
   const buildings = see.length ? see : null;
   // Doklady: ano = smí fotit doklady (paragony); Odesílá účetní: ano = smí z aplikace odeslat doklady účetní (vidí doklady všech)
   const yes = x => /^(ano|a|1|x|true|yes)$/i.test(String(x === undefined || x === null ? '' : x).trim());
-  return { name: String(hit[0]).trim(), buildings: buildings, editBuildings: editList, edit: editList === null || editList.length > 0, editAll: buildings === null && editList === null, docs: yes(hit[5]), acc: yes(hit[6]) };
+  return { name: String(hit[0]).trim(), buildings: buildings, editBuildings: editList, edit: editList === null || editList.length > 0, editAll: buildings === null && editList === null, docs: pc.docs >= 0 && yes(hit[pc.docs]), acc: pc.acc >= 0 && yes(hit[pc.acc]) };
+}
+// sloupce Doklady a Odesílá účetní se hledají podle nadpisu (ne podle polohy); když chybí, přidají se za poslední sloupec
+function peopleCols_(sh, head) {
+  const h = head.map(normKey_);
+  let docs = h.indexOf('doklady'), acc = h.findIndex(x => /^odesila uce/.test(x));
+  let last = h.reduce((m, x, i) => x ? i : m, -1);
+  if (docs < 0) { docs = ++last; sh.getRange(1, docs + 1).setValue('Doklady'); }
+  if (acc < 0) { acc = ++last; sh.getRange(1, acc + 1).setValue('Odesílá účetní'); }
+  return { docs: docs, acc: acc };
+}
+// menu: jak skript čte oprávnění jednotlivých lidí
+function checkPeople() {
+  const sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PEOPLE);
+  if (!sh || sh.getLastRow() < 2) { SpreadsheetApp.getUi().alert('List Lidé je prázdný.'); return; }
+  const v = sh.getRange(1, 1, sh.getLastRow(), Math.max(5, sh.getLastColumn())).getValues(), pc = peopleCols_(sh, v[0]);
+  const yes = x => /^(ano|a|1|x|true|yes)$/i.test(String(x === undefined || x === null ? '' : x).trim());
+  const col = i => String.fromCharCode(65 + i);
+  const lines = v.slice(1).filter(r => String(r[0]).trim()).map(r => '• ' + String(r[0]).trim() + ': vidí ' + (String(r[3]).trim() || 'vše') + ', edituje ' + (String(r[4]).trim() || 'vše, co vidí') + ', doklady ' + (yes(r[pc.docs]) ? 'ANO' : 'ne') + ', odesílá účetní ' + (yes(r[pc.acc]) ? 'ANO' : 'ne') + (r[1] ? '' : ' (bez kódu, nemá přístup)'));
+  SpreadsheetApp.getUi().alert('Oprávnění podle listu Lidé (Doklady = sloupec ' + col(pc.docs) + ', Odesílá účetní = sloupec ' + col(pc.acc) + '):\n\n' + lines.join('\n') + '\n\nSprávce (hlavní kód) má vždy všechna oprávnění.');
 }
 function who_(t) { const p = person_(t); return p ? p.name : ''; }
 function inList_(list, m) { return list.indexOf(normKey_(m.building)) >= 0 || (!!m.parent && list.indexOf(normKey_(m.parent)) >= 0); }
