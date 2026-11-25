@@ -34,7 +34,7 @@ function docsSS_() {
 }
 // menu v souboru dokladů (instalovaný spouštěč při otevření)
 function docsOnOpen() {
-  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addToUi();
+  SpreadsheetApp.getUi().createMenu('Doklady').addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts').addItem('Seřadit Faktury podle DUZP', 'sortInvoices').addItem('Nastavit e-mail účetní', 'setAccountant').addItem('Nastavit kopii e-mailu (výbor)', 'setAccountantCc').addToUi();
 }
 // z menu tabulky měřidel: odkaz na soubor dokladů
 function openDocsFile() {
@@ -128,9 +128,41 @@ function receiptRead_(b64) {
 
 // odeslání vybraných dokladů účetní (e-mail s fotkami v příloze); doklady se označí jako odeslané a zapíšou do listu Faktury
 // pick(rowValues) vybírá doklady; už odeslané se přeskočí
-function receiptsSendCore_(who, pick, message) {
+// e-mail(y) oddělené čárkou nebo středníkem; neplatné se zahodí
+const mailList_ = v => String(v || '').split(/[,;\s]+/).map(x => x.trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
+const escH_ = x => String(x === undefined || x === null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+
+// HTML podoba e-mailu pro účetní (vložené styly kvůli e-mailovým programům)
+function receiptsMailHtml_(rows, sum, msg, who, batchId) {
+  const td = 'padding:8px 10px;border-bottom:1px solid #e5e9ef;font:14px Arial,Helvetica,sans-serif;color:#1f2933;vertical-align:top';
+  const th = 'padding:8px 10px;background:#eef2f7;font:bold 12px Arial,Helvetica,sans-serif;color:#516070;text-align:left;text-transform:uppercase;letter-spacing:.03em';
+  const body = rows.map((x, k) => '<tr style="background:' + (k % 2 ? '#fafbfd' : '#ffffff') + '">' +
+    '<td style="' + td + ';color:#8a96a3">' + (k + 1) + '</td>' +
+    '<td style="' + td + ';white-space:nowrap">' + escH_(x.date) + '</td>' +
+    '<td style="' + td + '"><b>' + escH_(x.vendor || '–') + '</b><br><span style="color:#516070">' + escH_(x.purpose) + (x.building ? ' · ' + escH_(x.building) : '') + '</span>' + (x.note ? '<br><span style="color:#8a96a3;font-size:12px">' + escH_(x.note) + '</span>' : '') + (x.nophoto ? '<br><span style="color:#b42318;font-size:12px">fotku se nepodařilo přiložit</span>' : '') + '</td>' +
+    '<td style="' + td + ';color:#516070">' + escH_(x.who) + '</td>' +
+    '<td style="' + td + ';text-align:right;white-space:nowrap"><b>' + escH_(fmtKc_(x.amount)) + '</b></td></tr>').join('');
+  return '<div style="background:#f4f6f9;padding:24px 12px">' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" style="max-width:680px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #dde3ea">' +
+    '<tr><td style="background:#2563eb;padding:18px 24px;font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff">SVJ Od Vysoké<div style="font:14px Arial,Helvetica,sans-serif;color:#dbe7ff;margin-top:4px">Doklady k zaúčtování · ' + rows.length + (rows.length === 1 ? ' doklad' : rows.length < 5 ? ' doklady' : ' dokladů') + '</div></td></tr>' +
+    '<tr><td style="padding:20px 24px 6px;font:15px Arial,Helvetica,sans-serif;color:#1f2933">Dobrý den,<br><br>posíláme doklady k zaúčtování. Fotky jsou v příloze, číslo přílohy odpovídá číslu řádku.</td></tr>' +
+    (msg ? '<tr><td style="padding:10px 24px"><div style="background:#fff8e1;border-left:4px solid #e0a800;border-radius:6px;padding:12px 14px;font:15px Arial,Helvetica,sans-serif;color:#1f2933"><b>Zpráva:</b> ' + escH_(msg) + '</div></td></tr>' : '') +
+    '<tr><td style="padding:10px 24px"><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e9ef;border-radius:8px">' +
+    '<tr><th style="' + th + '">#</th><th style="' + th + '">Datum</th><th style="' + th + '">Obchod / účel</th><th style="' + th + '">Zapsal(a)</th><th style="' + th + ';text-align:right">Částka</th></tr>' + body +
+    '<tr><td colspan="4" style="padding:10px;font:bold 15px Arial,Helvetica,sans-serif;color:#1f2933;text-align:right">Celkem</td><td style="padding:10px;font:bold 16px Arial,Helvetica,sans-serif;color:#2563eb;text-align:right;white-space:nowrap">' + escH_(fmtKc_(sum)) + '</td></tr>' +
+    '</table></td></tr>' +
+    '<tr><td style="padding:14px 24px 22px;font:12px Arial,Helvetica,sans-serif;color:#8a96a3">Dávka ' + escH_(batchId) + ' · odeslal(a) ' + escH_(who) + '<br>Odesláno z aplikace Fotoapp SVJ Od Vysoké.</td></tr>' +
+    '</table></div>';
+}
+
+// odeslání vybraných dokladů účetní (e-mail s fotkami v příloze), v kopii výbor (ACCOUNTANT_CC) a případně další adresa;
+// doklady se označí jako odeslané a zapíšou do listu Faktury. pick(rowValues) vybírá doklady; už odeslané se přeskočí
+function receiptsSendCore_(who, pick, message, extra) {
   const to = props_().getProperty('ACCOUNTANT');
   if (!to) return { ok: false, error: 'noaccountant' };
+  const extraList = mailList_(extra);
+  if (String(extra || '').trim() && !extraList.length) return { ok: false, error: 'email' };
+  const cc = mailList_(props_().getProperty('ACCOUNTANT_CC')).concat(extraList).filter((x, i, a) => a.indexOf(x) === i && x.toLowerCase() !== to.toLowerCase());
   const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
   if (!sh || sh.getLastRow() < 2) return { ok: true, count: 0 };
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
@@ -140,32 +172,37 @@ function receiptsSendCore_(who, pick, message) {
     const chosen = [], skipped = [];
     v.forEach((r, i) => { if (r[9] && pick(r)) (/^odesl/i.test(String(r[8] || '')) ? skipped : chosen).push({ n: i + 2, r: r }); });
     if (!chosen.length) return { ok: true, count: 0, skipped: skipped.length };
-    const batch = chosen.slice(0, DOCS_MAX_MAIL), files = [], lines = [];
+    const batch = chosen.slice(0, DOCS_MAX_MAIL), files = [], lines = [], items = [];
     let sum = 0;
     batch.forEach((x, k) => {
       const r = x.r, d = Object.prototype.toString.call(r[1]) === '[object Date]' ? Utilities.formatDate(r[1], tz, 'd. M. yyyy') : String(r[1]);
       sum += Number(r[2]) || 0;
-      lines.push((k + 1) + '. ' + d + ' · ' + fmtKc_(r[2]) + ' · ' + (r[3] || '–') + ' · ' + r[4] + (r[5] ? ' · ' + r[5] : '') + ' · zapsal(a) ' + r[6] + (r[10] ? ' · ' + r[10] : ''));
-      try { const f = DriveApp.getFileById(driveId_(r[7])); files.push(f.getBlob().setName((k + 1) + '_' + f.getName())); } catch (e) { lines[lines.length - 1] += ' (fotku se nepodařilo přiložit)'; }
+      const it = { date: d, amount: r[2], vendor: r[3], purpose: r[4], building: r[5], who: r[6], note: r[10], nophoto: false };
+      try { const f = DriveApp.getFileById(driveId_(r[7])); files.push(f.getBlob().setName((k + 1) + '_' + f.getName())); } catch (e) { it.nophoto = true; }
+      items.push(it);
+      lines.push((k + 1) + '. ' + d + ' · ' + fmtKc_(r[2]) + ' · ' + (r[3] || '–') + ' · ' + r[4] + (r[5] ? ' · ' + r[5] : '') + ' · zapsal(a) ' + r[6] + (r[10] ? ' · ' + r[10] : '') + (it.nophoto ? ' (fotku se nepodařilo přiložit)' : ''));
     });
     sh.getRange(1, COL_DMSG).getValue() || docsSheet_(); // doplní hlavičky Dávka / Zpráva, pokud chybí
-    const msgTxt = String(message || '').trim();
-    MailApp.sendEmail({
-      to: to, name: 'SVJ Od Vysoké', subject: envTag_() + 'SVJ Od Vysoké – doklady k zaúčtování (' + batch.length + ')',
-      body: 'Dobrý den,\n\nposíláme doklady k zaúčtování (fotky v příloze, číslo přílohy odpovídá řádku):\n\n' + lines.join('\n') + '\n\nCelkem: ' + fmtKc_(sum) + (msgTxt ? '\n\nZpráva: ' + msgTxt : '') + '\n\nOdeslal(a): ' + who + '\nSVJ Od Vysoké',
-      attachments: files
-    });
     const stamp = new Date(), msg = String(message || '').trim().slice(0, 500), batchId = Utilities.formatDate(stamp, tz, 'yyyyMMdd-HHmmss');
-    batch.forEach(x => { sh.getRange(x.n, 9).setValue('odesláno'); sh.getRange(x.n, 12).setValue(stamp); sh.getRange(x.n, COL_DSEL).setValue(false); sh.getRange(x.n, COL_DBATCH).setValue(batchId); sh.getRange(x.n, COL_DMSG).setValue(msg); });
-    invoicesAppend_(batch.map(x => x.r), stamp, batchId, msg);
-    return { ok: true, count: batch.length, to: to, more: chosen.length - batch.length, skipped: skipped.length };
+    const mail = {
+      to: to, name: 'SVJ Od Vysoké', subject: envTag_() + 'SVJ Od Vysoké – doklady k zaúčtování (' + batch.length + ')',
+      body: 'Dobrý den,\n\nposíláme doklady k zaúčtování (fotky v příloze, číslo přílohy odpovídá řádku):\n\n' + lines.join('\n') + '\n\nCelkem: ' + fmtKc_(sum) + (msg ? '\n\nZpráva: ' + msg : '') + '\n\nDávka ' + batchId + ', odeslal(a): ' + who + '\nSVJ Od Vysoké',
+      htmlBody: receiptsMailHtml_(items, sum, msg, who, batchId),
+      attachments: files
+    };
+    if (cc.length) mail.cc = cc.join(',');
+    MailApp.sendEmail(mail);
+    const note = msg + (extraList.length ? (msg ? ' ' : '') + '(kopie: ' + extraList.join(', ') + ')' : '');
+    batch.forEach(x => { sh.getRange(x.n, 9).setValue('odesláno'); sh.getRange(x.n, 12).setValue(stamp); sh.getRange(x.n, COL_DSEL).setValue(false); sh.getRange(x.n, COL_DBATCH).setValue(batchId); sh.getRange(x.n, COL_DMSG).setValue(note); });
+    invoicesAppend_(batch.map(x => x.r), stamp, batchId, note);
+    return { ok: true, count: batch.length, to: to, cc: cc, more: chosen.length - batch.length, skipped: skipped.length };
   } finally { lock.releaseLock(); }
 }
 // z aplikace: seznam ID dokladů (jen pro toho, kdo smí odesílat účetní)
 function receiptsSend_(body, who) {
   const ids = (Array.isArray(body.rids) ? body.rids : []).map(String).filter(Boolean);
   if (!ids.length) return { ok: false, error: 'data' };
-  return receiptsSendCore_(who, r => ids.indexOf(String(r[9])) >= 0, body.message);
+  return receiptsSendCore_(who, r => ids.indexOf(String(r[9])) >= 0, body.message, body.extra);
 }
 
 // ---------- list Faktury: odeslané doklady, řazené podle DUZP ----------
@@ -205,16 +242,46 @@ function setAccountant() {
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) { ui.alert('To nevypadá jako e-mail.'); return; }
   props_().setProperty('ACCOUNTANT', v); ui.alert('Uloženo: ' + v);
 }
+function selectedCount_() {
+  const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
+  if (!sh || sh.getLastRow() < 2 || sh.getLastColumn() < COL_DSEL) return 0;
+  return sh.getRange(2, 1, sh.getLastRow() - 1, COL_DSEL).getValues().filter(r => r[COL_DSEL - 1] === true && r[9] && !/^odesl/i.test(String(r[8] || ''))).length;
+}
 function sendReceipts() {
-  const ui = SpreadsheetApp.getUi(), dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_DOCS);
-  const n = sh && sh.getLastRow() > 1 && sh.getLastColumn() >= COL_DSEL ? sh.getRange(2, 1, sh.getLastRow() - 1, COL_DSEL).getValues().filter(r => r[COL_DSEL - 1] === true && r[9] && !/^odesl/i.test(String(r[8] || ''))).length : 0;
+  const ui = SpreadsheetApp.getUi(), n = selectedCount_(), to = props_().getProperty('ACCOUNTANT');
+  if (!to) { ui.alert('Nejdřív nastav e-mail účetní (menu Doklady → Nastavit e-mail účetní).'); return; }
   if (!n) { ui.alert('Nic není vybráno. V listu Doklady zaškrtni ve sloupci Vybrat k odeslání doklady, které chceš poslat.'); return; }
-  // krátká zpráva pro účetní (např. proplaceno z účtu jedním příkazem komu); doklady odeslané najednou dostanou společné číslo dávky
-  const p = ui.prompt('Odeslat ' + n + ' dokladů účetní', 'Zpráva pro účetní (nepovinné), např. „Proplaceno z účtu SVJ jedním příkazem Janu Novákovi“:', ui.ButtonSet.OK_CANCEL);
-  if (p.getSelectedButton() !== ui.Button.OK) return;
-  const r = receiptsSendCore_(Session.getActiveUser().getEmail() || 'správce (tabulka)', row => row[COL_DSEL - 1] === true, p.getResponseText());
-  if (!r.ok) { ui.alert(r.error === 'noaccountant' ? 'Nejdřív nastav e-mail účetní (Měřidla → Doklady → Nastavit e-mail účetní).' : 'Odeslání se nepovedlo.'); return; }
-  ui.alert(r.count ? 'Odesláno ' + r.count + ' dokladů na ' + r.to + ' a zapsáno do listu Faktury (soubor dokladů).' + (r.more ? ' Zbývá ještě ' + r.more + ' vybraných, pošli je dalším spuštěním.' : '') + (r.skipped ? ' Přeskočeno už odeslaných: ' + r.skipped + '.' : '') : (r.skipped ? 'Vybrané doklady už byly odeslané.' : 'Nic není vybráno. V listu Doklady zaškrtni ve sloupci Vybrat k odeslání doklady, které chceš poslat.'));
+  const cc = mailList_(props_().getProperty('ACCOUNTANT_CC'));
+  const html = '<div style="font:14px Arial,Helvetica,sans-serif;color:#1f2933">' +
+    '<p style="margin:0 0 10px">Odeslat <b>' + n + '</b> ' + (n === 1 ? 'vybraný doklad' : n < 5 ? 'vybrané doklady' : 'vybraných dokladů') + ' účetní <b>' + escH_(to) + '</b>' + (cc.length ? '<br><span style="color:#516070">v kopii: ' + escH_(cc.join(', ')) + '</span>' : '') + '</p>' +
+    '<label style="font-weight:bold">Zpráva pro účetní <span style="font-weight:normal;color:#8a96a3">(nepovinné)</span></label>' +
+    '<textarea id="m" rows="3" style="width:100%;box-sizing:border-box;margin:4px 0 10px;font:14px Arial;padding:6px" placeholder="např. Proplaceno z účtu SVJ jedním příkazem Janu Novákovi"></textarea>' +
+    '<label style="font-weight:bold">Poslat také na e-mail <span style="font-weight:normal;color:#8a96a3">(nepovinné, víc adres odděl čárkou)</span></label>' +
+    '<input id="e" type="text" style="width:100%;box-sizing:border-box;margin:4px 0 12px;font:14px Arial;padding:6px" placeholder="např. jan.novak@example.com">' +
+    '<div id="s" style="min-height:18px;color:#b42318;margin-bottom:8px"></div>' +
+    '<button id="b" style="background:#2563eb;color:#fff;border:0;border-radius:8px;padding:9px 16px;font:bold 14px Arial;cursor:pointer">Odeslat</button> ' +
+    '<button onclick="google.script.host.close()" style="background:#e8edf5;border:0;border-radius:8px;padding:9px 16px;font:14px Arial;cursor:pointer">Zrušit</button></div>' +
+    '<script>document.getElementById("b").onclick=function(){var b=this;b.disabled=true;document.getElementById("s").style.color="#516070";document.getElementById("s").textContent="Odesílám…";' +
+    'google.script.run.withSuccessHandler(function(t){document.getElementById("s").style.color=/^Odesláno/.test(t)?"#166534":"#b42318";document.getElementById("s").textContent=t;if(/^Odesláno/.test(t)){b.textContent="Hotovo";setTimeout(function(){google.script.host.close()},2500)}else b.disabled=false})' +
+    '.withFailureHandler(function(e){document.getElementById("s").textContent="Chyba: "+e.message;b.disabled=false}).receiptsDialogSend(document.getElementById("m").value,document.getElementById("e").value)};</script>';
+  ui.showModalDialog(HtmlService.createHtmlOutput(html).setWidth(460).setHeight(360), 'Odeslat doklady účetní');
+}
+// volá okno Odeslat doklady účetní
+function receiptsDialogSend(message, extra) {
+  const r = receiptsSendCore_(Session.getActiveUser().getEmail() || 'správce (tabulka)', row => row[COL_DSEL - 1] === true, message, extra);
+  if (!r.ok) return r.error === 'noaccountant' ? 'Nejdřív nastav e-mail účetní.' : r.error === 'email' ? 'E-mail navíc nevypadá jako platná adresa.' : 'Odeslání se nepovedlo.';
+  if (!r.count) return r.skipped ? 'Vybrané doklady už byly odeslané.' : 'Nic není vybráno.';
+  return 'Odesláno ' + r.count + ' dokladů na ' + r.to + (r.cc && r.cc.length ? ' (v kopii ' + r.cc.join(', ') + ')' : '') + ' a zapsáno do listu Faktury.' + (r.more ? ' Zbývá ještě ' + r.more + ' vybraných, pošli je znovu.' : '');
+}
+function setAccountantCc() {
+  const ui = SpreadsheetApp.getUi(), cur = props_().getProperty('ACCOUNTANT_CC') || '';
+  const r = ui.prompt('Kopie e-mailu účetní (výbor)', 'Tyto adresy dostanou každý e-mail s doklady v kopii. Víc adres odděl čárkou. Prázdné = bez kopie.' + (cur ? ' Teď: ' + cur : ''), ui.ButtonSet.OK_CANCEL);
+  if (r.getSelectedButton() !== ui.Button.OK) return;
+  const t = r.getResponseText().trim();
+  if (t === '') { props_().deleteProperty('ACCOUNTANT_CC'); ui.alert('Kopie je zrušená.'); return; }
+  const list = mailList_(t);
+  if (!list.length) { ui.alert('Nenašel jsem žádnou platnou adresu.'); return; }
+  props_().setProperty('ACCOUNTANT_CC', list.join(',')); ui.alert('Uloženo: ' + list.join(', '));
 }
 function sortInvoices() {
   const dss = docsSSIfExists_(), sh = dss && dss.getSheetByName(SHEET_INV);
