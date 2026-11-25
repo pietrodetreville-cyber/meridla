@@ -383,7 +383,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.48.0';
+const VERSION = '1.49.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -707,10 +707,11 @@ $('rlist').addEventListener('change', e => { if (e.target.classList && e.target.
 $('rlist').addEventListener('click', e => { const a = e.target.closest && e.target.closest('a[data-pid]'); if (!a) return; e.preventDefault(); showRecordPhoto(a.dataset.pid, ''); });
 $('rsendacc').onclick = async () => {
   const ids = selRids(); if (!ids.length) return;
-  if (!confirm('Odeslat ' + ids.length + ' vybraných dokladů účetní e-mailem (s fotkami v příloze)? Zapíšou se i do listu Faktury.')) return;
+  const msg = prompt('Odeslat ' + ids.length + ' vybraných dokladů účetní (s fotkami v příloze, zapíšou se i do Faktur).\n\nZpráva pro účetní (nepovinné), např. „Proplaceno z účtu SVJ jedním příkazem Janu Novákovi“:', '');
+  if (msg === null) return;
   $('rsendacc').disabled = true;
   try {
-    const r = await post({ token: token(), action: 'receiptsSend', rids: ids });
+    const r = await post({ token: token(), action: 'receiptsSend', rids: ids, message: msg });
     if (r.ok) toast(r.count ? 'Odesláno ' + r.count + ' dokladů na ' + r.to + (r.more ? '. Zbývá ' + r.more + ' vybraných, odešli znovu.' : ' ✓') : 'Vybrané doklady už byly odeslané.', 6000);
     else toast(r.error === 'noaccountant' ? 'E-mail účetní není nastavený.' : r.error === 'forbidden' ? 'Nemáš oprávnění odesílat doklady.' : 'Odeslání se nepovedlo.', 6000);
   } catch (e) { toast('Bez připojení nebo chyba serveru.'); }
