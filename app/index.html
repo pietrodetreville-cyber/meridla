@@ -383,7 +383,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.50.0';
+const VERSION = '1.51.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -685,7 +685,7 @@ $('rsave').onclick = async () => {
   rLock(false);
   if (!r) return queueIt('Odeslání se nepovedlo. Doklad je uložený v telefonu a odešle se sám.');
   if (!r.ok) { $('rstat').textContent = r.error === 'forbidden' ? 'Nemáš oprávnění zapisovat doklady.' : r.error === 'future' ? 'Datum nesmí být v budoucnosti.' : r.error === 'data' || r.error === 'date' ? 'Zkontroluj datum, částku a účel.' : 'Uložení se nepovedlo.'; return; }
-  toast(r.dup ? 'Doklad už byl uložen.' : 'Doklad uložen ✓', 3500); rReset(); loadReceipts();
+  toast(r.dup ? 'Doklad už byl uložen.' : 'Doklad uložen' + (r.num ? ' jako ' + r.num : '') + ' ✓', 4000); rReset(); loadReceipts();
 };
 async function loadReceipts() {
   const box = $('rlist');
@@ -695,7 +695,7 @@ async function loadReceipts() {
     if (!r.ok) { box.innerHTML = '<p class="note warn">Doklady se nepodařilo načíst.</p>'; return; }
     const esc = x => String(x || '').replace(/</g, '&lt;'), sent = x => /^odesl/i.test(x.status);
     // kdo odesílá účetní, vybírá nové doklady zaškrtnutím
-    box.innerHTML = r.items.length ? r.items.map(x => '<div class="hrow">' + (canAcc && !sent(x) ? '<input type="checkbox" class="rsel" data-rid="' + esc(x.rid).replace(/"/g, '') + '" aria-label="Vybrat k odeslání">' : '') + '<span style="flex:1">' + fmtDay(x.date) + '<br><span class="note">' + esc(x.vendor || '–') + ' · ' + esc(x.purpose) + (x.building ? ' · ' + esc(x.building) : '') + '</span><br><span class="src">' + esc(x.who) + (x.pid ? ' · <a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="doklad">📷 fotka</a>' : '') + '</span></span><span style="text-align:right"><b>' + fmtKc(x.amount) + '</b><br>' + (sent(x) ? '<span class="chip ok">odesláno</span>' : '<span class="chip todo">nový</span>') + '</span></div>').join('') : '<p class="note">Zatím žádné doklady.</p>';
+    box.innerHTML = r.items.length ? r.items.map(x => '<div class="hrow">' + (canAcc && !sent(x) ? '<input type="checkbox" class="rsel" data-rid="' + esc(x.rid).replace(/"/g, '') + '" aria-label="Vybrat k odeslání">' : '') + '<span style="flex:1">' + (x.num ? '<b>' + esc(x.num) + '</b> · ' : '') + fmtDay(x.date) + '<br><span class="note">' + esc(x.vendor || '–') + ' · ' + esc(x.purpose) + (x.building ? ' · ' + esc(x.building) : '') + '</span><br><span class="src">' + esc(x.who) + (x.pid ? ' · <a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="doklad">📷 fotka</a>' : '') + '</span></span><span style="text-align:right"><b>' + fmtKc(x.amount) + '</b><br>' + (sent(x) ? '<span class="chip ok">odesláno</span>' : '<span class="chip todo">nový</span>') + '</span></div>').join('') : '<p class="note">Zatím žádné doklady.</p>';
     $('rsendacc').classList.toggle('hide', !(canAcc && r.accountant && r.items.some(x => !sent(x))));
     $('raccnote').classList.toggle('hide', !(canAcc && !r.accountant)); $('raccnote').textContent = 'E-mail účetní není nastavený. Nastav ho v tabulce: Měřidla → Doklady → Nastavit e-mail účetní.';
     paintSel();
