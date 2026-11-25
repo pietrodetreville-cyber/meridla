@@ -132,26 +132,28 @@ function receiptRead_(b64) {
 const mailList_ = v => String(v || '').split(/[,;\s]+/).map(x => x.trim()).filter(x => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(x));
 const escH_ = x => String(x === undefined || x === null ? '' : x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-// HTML podoba e-mailu pro účetní (vložené styly kvůli e-mailovým programům)
+// HTML podoba e-mailu pro účetní: každý doklad je blok o dvou sloupcích (údaje / částka), takže se vejde i na telefon
+// (vložené styly a tabulky kvůli e-mailovým programům)
 function receiptsMailHtml_(rows, sum, msg, who, batchId) {
-  const td = 'padding:8px 10px;border-bottom:1px solid #e5e9ef;font:14px Arial,Helvetica,sans-serif;color:#1f2933;vertical-align:top';
-  const th = 'padding:8px 10px;background:#eef2f7;font:bold 12px Arial,Helvetica,sans-serif;color:#516070;text-align:left;text-transform:uppercase;letter-spacing:.03em';
-  const body = rows.map((x, k) => '<tr style="background:' + (k % 2 ? '#fafbfd' : '#ffffff') + '">' +
-    '<td style="' + td + ';color:#8a96a3">' + (k + 1) + '</td>' +
-    '<td style="' + td + ';white-space:nowrap">' + escH_(x.date) + '</td>' +
-    '<td style="' + td + '"><b>' + escH_(x.vendor || '–') + '</b><br><span style="color:#516070">' + escH_(x.purpose) + (x.building ? ' · ' + escH_(x.building) : '') + '</span>' + (x.note ? '<br><span style="color:#8a96a3;font-size:12px">' + escH_(x.note) + '</span>' : '') + (x.nophoto ? '<br><span style="color:#b42318;font-size:12px">fotku se nepodařilo přiložit</span>' : '') + '</td>' +
-    '<td style="' + td + ';color:#516070">' + escH_(x.who) + '</td>' +
-    '<td style="' + td + ';text-align:right;white-space:nowrap"><b>' + escH_(fmtKc_(x.amount)) + '</b></td></tr>').join('');
-  return '<div style="background:#f4f6f9;padding:24px 12px">' +
-    '<table role="presentation" cellpadding="0" cellspacing="0" style="max-width:680px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;overflow:hidden;border:1px solid #dde3ea">' +
-    '<tr><td style="background:#2563eb;padding:18px 24px;font:bold 20px Arial,Helvetica,sans-serif;color:#ffffff">SVJ Od Vysoké<div style="font:14px Arial,Helvetica,sans-serif;color:#dbe7ff;margin-top:4px">Doklady k zaúčtování · ' + rows.length + (rows.length === 1 ? ' doklad' : rows.length < 5 ? ' doklady' : ' dokladů') + '</div></td></tr>' +
-    '<tr><td style="padding:20px 24px 6px;font:15px Arial,Helvetica,sans-serif;color:#1f2933">Dobrý den,<br><br>posíláme doklady k zaúčtování. Fotky jsou v příloze, číslo přílohy odpovídá číslu řádku.</td></tr>' +
-    (msg ? '<tr><td style="padding:10px 24px"><div style="background:#fff8e1;border-left:4px solid #e0a800;border-radius:6px;padding:12px 14px;font:15px Arial,Helvetica,sans-serif;color:#1f2933"><b>Zpráva:</b> ' + escH_(msg) + '</div></td></tr>' : '') +
-    '<tr><td style="padding:10px 24px"><table role="presentation" cellpadding="0" cellspacing="0" style="width:100%;border-collapse:collapse;border:1px solid #e5e9ef;border-radius:8px">' +
-    '<tr><th style="' + th + '">#</th><th style="' + th + '">Datum</th><th style="' + th + '">Obchod / účel</th><th style="' + th + '">Zapsal(a)</th><th style="' + th + ';text-align:right">Částka</th></tr>' + body +
-    '<tr><td colspan="4" style="padding:10px;font:bold 15px Arial,Helvetica,sans-serif;color:#1f2933;text-align:right">Celkem</td><td style="padding:10px;font:bold 16px Arial,Helvetica,sans-serif;color:#2563eb;text-align:right;white-space:nowrap">' + escH_(fmtKc_(sum)) + '</td></tr>' +
+  const F = 'font-family:Arial,Helvetica,sans-serif;';
+  const item = (x, k) => '<tr><td style="padding:12px 14px;border-bottom:1px solid #e5e9ef;vertical-align:top;word-break:break-word;' + F + '">' +
+    '<div style="font-size:12px;color:#8a96a3;margin-bottom:3px">' + (k + 1) + ' · ' + escH_(x.date) + ' · zapsal(a) ' + escH_(x.who) + '</div>' +
+    '<div style="font-size:15px;font-weight:bold;color:#1f2933">' + escH_(x.vendor || '–') + '</div>' +
+    '<div style="font-size:14px;color:#516070">' + escH_(x.purpose) + (x.building ? ' · ' + escH_(x.building) : '') + '</div>' +
+    (x.note ? '<div style="font-size:12px;color:#8a96a3;margin-top:2px">' + escH_(x.note) + '</div>' : '') +
+    (x.nophoto ? '<div style="font-size:12px;color:#b42318;margin-top:2px">fotku se nepodařilo přiložit</div>' : '') +
+    '</td><td style="padding:12px 14px;border-bottom:1px solid #e5e9ef;vertical-align:top;text-align:right;white-space:nowrap;font-size:15px;font-weight:bold;color:#1f2933;' + F + '">' + escH_(fmtKc_(x.amount)) + '</td></tr>';
+  const count = rows.length + (rows.length === 1 ? ' doklad' : rows.length < 5 ? ' doklady' : ' dokladů');
+  return '<div style="background:#f4f6f9;padding:16px 8px;' + F + '">' +
+    '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:640px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #dde3ea;border-collapse:separate;overflow:hidden">' +
+    '<tr><td style="background:#2563eb;padding:16px 18px;color:#ffffff;' + F + '"><div style="font-size:19px;font-weight:bold">SVJ Od Vysoké</div><div style="font-size:14px;color:#dbe7ff;margin-top:3px">Doklady k zaúčtování · ' + count + '</div></td></tr>' +
+    '<tr><td style="padding:16px 18px 4px;font-size:15px;line-height:1.45;color:#1f2933;' + F + '">Dobrý den,<br>posíláme doklady k zaúčtování. Fotky jsou v příloze, číslo přílohy odpovídá číslu dokladu.</td></tr>' +
+    (msg ? '<tr><td style="padding:10px 18px"><div style="background:#fff8e1;border-left:4px solid #e0a800;border-radius:6px;padding:10px 12px;font-size:15px;line-height:1.4;color:#1f2933;word-break:break-word;' + F + '"><b>Zpráva:</b> ' + escH_(msg) + '</div></td></tr>' : '') +
+    '<tr><td style="padding:10px 18px 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e5e9ef;border-radius:8px;border-collapse:separate">' +
+    rows.map(item).join('') +
+    '<tr><td style="padding:12px 14px;font-size:15px;font-weight:bold;color:#1f2933;' + F + '">Celkem</td><td style="padding:12px 14px;text-align:right;white-space:nowrap;font-size:17px;font-weight:bold;color:#2563eb;' + F + '">' + escH_(fmtKc_(sum)) + '</td></tr>' +
     '</table></td></tr>' +
-    '<tr><td style="padding:14px 24px 22px;font:12px Arial,Helvetica,sans-serif;color:#8a96a3">Dávka ' + escH_(batchId) + ' · odeslal(a) ' + escH_(who) + '<br>Odesláno z aplikace Fotoapp SVJ Od Vysoké.</td></tr>' +
+    '<tr><td style="padding:12px 18px 18px;font-size:12px;line-height:1.5;color:#8a96a3;' + F + '">Dávka ' + escH_(batchId) + ' · odeslal(a) ' + escH_(who) + '<br>Odesláno z aplikace Fotoapp SVJ Od Vysoké.</td></tr>' +
     '</table></div>';
 }
 
