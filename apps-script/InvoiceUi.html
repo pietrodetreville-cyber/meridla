@@ -31,8 +31,8 @@
 <body>
 <div class="wrap">
   <div class="pane">
-    <div class="ph"><b>1. PDF ve složce</b><button class="sec" id="reload" type="button" title="Načíst znovu">↻</button></div>
-    <div class="muted" style="padding:6px 12px">Nahraj PDF faktury do složky <a id="folder" href="#" target="_blank">Došlé faktury</a> na Disku.</div>
+    <div class="ph"><b>1. Faktury ve složce</b><button class="sec" id="reload" type="button" title="Načíst znovu">↻</button></div>
+    <div class="muted" style="padding:6px 12px">Nahraj fakturu (PDF nebo fotku) do složky <a id="folder" href="#" target="_blank">Došlé faktury</a> na Disku.</div>
     <div id="list"><div class="empty">Načítám…</div></div>
   </div>
   <div class="pane">
@@ -51,7 +51,7 @@
       <label for="note">Poznámka (nepovinná)</label><textarea id="note" rows="2"></textarea>
     </div>
     <div class="foot">
-      <div id="msg" class="muted">Vyber PDF vlevo.</div>
+      <div id="msg" class="muted">Vyber fakturu vlevo.</div>
       <button id="save" type="button" disabled>3. Zaregistrovat</button>
       <button class="sec" type="button" onclick="google.script.host.close()">Zavřít</button>
     </div>
@@ -65,7 +65,7 @@ function lock(on) { busy = on; ['ai', 'save', 'reload'].forEach(i => { $(i).disa
 function clearForm() { ['vendor', 'ico', 'invNo', 'issued', 'duzp', 'due', 'amount', 'purpose', 'note'].forEach(i => { $(i).value = ''; }); $('building').value = ''; }
 function render() {
   const l = $('list'); l.textContent = '';
-  if (!files.length) { l.innerHTML = '<div class="empty">Ve složce není žádné PDF. Nahraj fakturu na Disk do složky Došlé faktury a klepni na ↻.</div>'; return; }
+  if (!files.length) { l.innerHTML = '<div class="empty">Ve složce není žádná faktura (PDF ani fotka). Nahraj ji na Disk do složky Došlé faktury a klepni na ↻.</div>'; return; }
   files.forEach(f => {
     const d = document.createElement('div'); d.className = 'it' + (sel && sel.id === f.id ? ' sel' : '');
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = f.name;
@@ -111,7 +111,7 @@ function register(force) {
   google.script.run.withSuccessHandler(r => {
     lock(false);
     if (!r.ok) { if (r.dup && confirm(r.error + '\n\nZaregistrovat přesto?')) return register(true); return msg(r.error || 'Registrace se nepovedla.', 'bad'); }
-    msg('Zaregistrováno jako ' + r.num + '. PDF je přejmenované a přesunuté do složky Doklady. Odešleš ho účetní zaškrtnutím v listu Doklady.', 'ok');
+    msg('Zaregistrováno jako ' + r.num + '. Soubor je přejmenovaný a přesunutý do složky Doklady. Účetní ho odešleš zaškrtnutím v listu Doklady.', 'ok');
     sel = null; clearForm(); $('prev').removeAttribute('src'); $('pname').textContent = ''; load();
   }).withFailureHandler(e => { lock(false); msg('Chyba: ' + e.message, 'bad'); }).invUiRegister(d);
 }

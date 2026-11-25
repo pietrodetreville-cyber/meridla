@@ -37,7 +37,7 @@ function docsOnOpen() {
   try { clearSentChecks_(docsSheet_()); } catch (e) {}
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Doklady')
-    .addItem('Zaregistrovat došlou fakturu (PDF)', 'invoiceDialog')
+    .addItem('Zaregistrovat došlou fakturu (PDF nebo fotka)', 'invoiceDialog')
     .addItem('Odeslat vybrané (zaškrtnuté) doklady účetní', 'sendReceipts')
     .addItem('Obnovit přehled pro výbor', 'refreshDash')
     .addItem('Seřadit Faktury podle DUZP', 'sortInvoices')
@@ -61,6 +61,8 @@ function clearSentChecks_(sh) {
   return a1.length;
 }
 const COL_DSEL = 13, COL_DBATCH = 14, COL_DMSG = 15, COL_DNUM = 16, COL_DTYPE = 17, COL_DINVNO = 18, COL_DDUZP = 19, COL_DDUE = 20;
+// přípona souboru dokladu podle typu (faktura může přijít jako PDF i jako fotka)
+function docExt_(mime) { const m = String(mime || '').toLowerCase(); return /pdf/.test(m) ? '.pdf' : /png/.test(m) ? '.png' : /webp/.test(m) ? '.webp' : /hei[cf]/.test(m) ? '.heic' : '.jpg'; }
 // fotka v buňce: krátký text (📷 číslo dokladu) s odkazem místo dlouhé adresy
 function setPhotoLink_(sh, row, col, label, url) {
   try { sh.getRange(row, col).setRichTextValue(SpreadsheetApp.newRichTextValue().setText(label).setLinkUrl(url).build()); }
@@ -100,7 +102,7 @@ function numberOldDocs_(sh) {
     const d = Object.prototype.toString.call(x.r[1]) === '[object Date]' ? x.r[1] : new Date(x.r[1]);
     const num = nextDocNum_(sh, isNaN(d) ? new Date() : d, taken); taken.push(num);
     sh.getRange(x.n, COL_DNUM).setValue(num);
-    try { DriveApp.getFileById(driveId_(x.r[7])).setName(num + '.jpg'); } catch (e) {}
+    try { const f = DriveApp.getFileById(driveId_(x.r[7])); f.setName(num + docExt_(f.getMimeType())); } catch (e) {}
   });
 }
 const DOCS_MAX_MAIL = 15; // nejvýš dokladů v jednom e-mailu (velikost příloh)
@@ -218,7 +220,7 @@ function receiptsMailHtml_(rows, sum, msg, who, batchId) {
   return '<div style="background:#f4f6f9;padding:16px 8px;' + F + '">' +
     '<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;margin:0 auto;background:#ffffff;border-radius:12px;border:1px solid #dde3ea;border-collapse:separate;overflow:hidden">' +
     '<tr><td style="background:#2563eb;padding:16px 18px;color:#ffffff;' + F + '"><div style="font-size:19px;font-weight:bold">SVJ Od Vysoké</div><div style="font-size:14px;color:#dbe7ff;margin-top:3px">Doklady k zaúčtování · ' + count + '</div></td></tr>' +
-    '<tr><td style="padding:16px 18px 4px;font-size:15px;line-height:1.45;color:#1f2933;' + F + '">Dobrý den,<br>posíláme doklady k zaúčtování. Fotky jsou v příloze, číslo přílohy odpovídá číslu dokladu v naší interní evidenci.</td></tr>' +
+    '<tr><td style="padding:16px 18px 4px;font-size:15px;line-height:1.45;color:#1f2933;' + F + '">Dobrý den,<br>posíláme doklady k zaúčtování. Doklady jsou v příloze, číslo přílohy odpovídá číslu dokladu v naší interní evidenci.</td></tr>' +
     (msg ? '<tr><td style="padding:10px 18px"><div style="background:#fff8e1;border-left:4px solid #e0a800;border-radius:6px;padding:10px 12px;font-size:15px;line-height:1.4;color:#1f2933;word-break:break-word;' + F + '"><b>Zpráva:</b> ' + escH_(msg) + '</div></td></tr>' : '') +
     '<tr><td style="padding:10px 18px 4px"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;border:1px solid #e5e9ef;border-radius:8px;border-collapse:separate">' +
     rows.map(item).join('') +
@@ -257,7 +259,7 @@ function receiptsSendCore_(who, pick, message, extra) {
       const fd = x => Object.prototype.toString.call(x) === '[object Date]' ? Utilities.formatDate(x, tz, 'd. M. yyyy') : String(x || '');
       const inv = String(r[COL_DTYPE - 1] || '') === 'faktura';
       const it = { num: num, date: d, amount: r[2], vendor: r[3], purpose: r[4], building: r[5], who: r[6], note: r[10], nophoto: false, inv: inv ? 'Faktura' + (r[COL_DINVNO - 1] ? ' č. ' + r[COL_DINVNO - 1] : '') + (r[COL_DDUZP - 1] ? ' · DUZP ' + fd(r[COL_DDUZP - 1]) : '') + (r[COL_DDUE - 1] ? ' · splatnost ' + fd(r[COL_DDUE - 1]) : '') : '' };
-      try { const f = DriveApp.getFileById(driveId_(r[7])); files.push(f.getBlob().setName(num + (/pdf/i.test(f.getMimeType()) ? '.pdf' : '.jpg'))); } catch (e) { it.nophoto = true; }
+      try { const f = DriveApp.getFileById(driveId_(r[7])); files.push(f.getBlob().setName(num + docExt_(f.getMimeType()))); } catch (e) { it.nophoto = true; }
       items.push(it);
       lines.push(num + ' · ' + d + ' · ' + fmtKc_(r[2]) + ' · ' + (r[3] || '–') + (it.inv ? ' · ' + it.inv : '') + ' · ' + r[4] + (r[5] ? ' · ' + r[5] : '') + ' · zapsal(a) ' + r[6] + (r[10] ? ' · ' + r[10] : '') + (it.nophoto ? ' (fotku se nepodařilo přiložit)' : ''));
     });
@@ -265,7 +267,7 @@ function receiptsSendCore_(who, pick, message, extra) {
     const stamp = new Date(), msg = String(message || '').trim().slice(0, 500), batchId = Utilities.formatDate(stamp, tz, 'yyyyMMdd-HHmmss');
     const mail = {
       to: to, name: 'SVJ Od Vysoké', subject: envTag_() + 'SVJ Od Vysoké – doklady k zaúčtování (' + batch.length + ')',
-      body: 'Dobrý den,\n\nposíláme doklady k zaúčtování. Fotky jsou v příloze, číslo přílohy odpovídá číslu dokladu v naší interní evidenci:\n\n' + lines.join('\n') + '\n\nCelkem: ' + fmtKc_(sum) + (msg ? '\n\nZpráva: ' + msg : '') + '\n\nDávka ' + batchId + ', odeslal(a): ' + who + '\nSVJ Od Vysoké',
+      body: 'Dobrý den,\n\nposíláme doklady k zaúčtování. Doklady jsou v příloze, číslo přílohy odpovídá číslu dokladu v naší interní evidenci:\n\n' + lines.join('\n') + '\n\nCelkem: ' + fmtKc_(sum) + (msg ? '\n\nZpráva: ' + msg : '') + '\n\nDávka ' + batchId + ', odeslal(a): ' + who + '\nSVJ Od Vysoké',
       htmlBody: receiptsMailHtml_(items, sum, msg, who, batchId),
       attachments: files
     };
