@@ -193,7 +193,7 @@ function receiptsList_(P) {
   const all = !P || P.acc, n = sh.getLastRow() - 1;
   const v = docRows_(sh).filter(r => all || String(r[6]) === P.name).slice(-60);
   const iso = x => x && Object.prototype.toString.call(x) === '[object Date]' ? x.toISOString() : String(x || '');
-  const items = v.filter(r => r[9]).map(r => ({ rid: String(r[9]), num: String(r[COL_DNUM - 1] || ''), date: iso(r[1]), amount: Number(r[2]), vendor: String(r[3] || ''), purpose: String(r[4] || ''), building: String(r[5] || ''), who: String(r[6] || ''), pid: driveId_(r[7]), status: String(r[8] || ''), sent: iso(r[11]), type: String(r[COL_DTYPE - 1] || 'paragon'), invNo: String(r[COL_DINVNO - 1] || '') })).reverse();
+  const items = v.filter(r => r[9]).map(r => ({ rid: String(r[9]), num: String(r[COL_DNUM - 1] || ''), date: iso(r[1]), amount: Number(r[2]), vendor: String(r[3] || ''), purpose: String(r[4] || ''), building: String(r[5] || ''), who: String(r[6] || ''), pid: driveId_(r[7]), status: String(r[8] || ''), sent: iso(r[11]), type: String(r[COL_DTYPE - 1] || 'paragon'), invNo: String(r[COL_DINVNO - 1] || ''), duzp: iso(r[COL_DDUZP - 1]), due: iso(r[COL_DDUE - 1]), entered: iso(r[0]), batch: String(r[COL_DBATCH - 1] || ''), msg: String(r[COL_DMSG - 1] || ''), note: String(r[10] || '').split(' · ').filter(t => !/^soubor:/.test(t)).join(' · ') })).reverse();
   return { ok: true, items: items, total: n, accountant: !!props_().getProperty('ACCOUNTANT') };
 }
 
