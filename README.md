@@ -9,7 +9,7 @@ Appka pro odečty měřidel (telefon) + skript v Google Apps Scriptu (příjem o
 | Větev v Gitu | `main` | `test` |
 | Adresa appky | `https://pietrodetreville-cyber.github.io/meridla/app/` | `https://pietrodetreville-cyber.github.io/meridla/test/app/` |
 | Tabulka a skript | ostrá tabulka `mereni_SVJ` | **kopie** tabulky se **vlastním** skriptem |
-| Označení | – | oranžový pruh „TESTOVACÍ VERZE", číslo verze s „· TEST", e-maily s předponou `[TEST]` |
+| Označení | – | oranžový pruh „TESTOVACÍ VERZE", číslo verze s „· TEST", e-maily s předponou `[TEST]`, přesměrované na `TEST_MAIL` |
 
 Testovací appka nikdy nesahá do ostré tabulky: bez adresy testovacího skriptu nic nevolá, a má oddělené úložiště v telefonu.
 
@@ -22,7 +22,7 @@ Testovací appka nikdy nesahá do ostré tabulky: bez adresy testovacího skript
 ## Zřízení testovací tabulky (jednorázově)
 
 1. V **ostré** tabulce: menu **Měřidla → Vytvořit testovací sadu** (funkce `createTestSet`). V `SVJ_app/TESTOVACI` vznikne kopie tabulky `mereni_SVJ_TEST` a obě složky pro fotky.
-2. V kopii: Rozšíření → Apps Script (pokud se skript nezkopíroval, vložit kód z `apps-script/Code.gs`). V nastavení projektu → Vlastnosti skriptu přidat `ENV` = `test`, `GEMINI_KEY` a případně změnit `NOTIFY` na testovací adresu.
+2. V kopii: Rozšíření → Apps Script (pokud se skript nezkopíroval, vložit kód z `apps-script/Code.gs`). V nastavení projektu → Vlastnosti skriptu přidat `ENV` = `test`, `GEMINI_KEY` a `TEST_MAIL` (testovací adresa). V testu chodí **všechny** e-maily jen na `TEST_MAIL` (bez ní na vlastníka skriptu), nikdy na adresy z listu Upozornění, `NOTIFY` ani účetní; sdílení přehledu s výborem se v testu nespouští.
 3. Spustit `setup` (použije složky v TESTOVACI), potom `clearTestData` (smaže zkopírované odečty a tajné kódy, běží jen s `ENV = test`) a `resetToken` (zapsat si nový tajný kód).
 4. Implementovat → Nové nasazení → Webová aplikace (Spustit jako: já, Přístup: kdokoli).
 5. Adresu `…/exec` vložit do `app/index.html` do `ENDPOINTS.test` (větev `test`).

@@ -131,6 +131,7 @@ function dashRefreshSafe_() { try { dashRefresh_(); } catch (e) { Logger.log('P�
 function shareDash_(ss) {
   const list = mailList_(props_().getProperty('DASH_VIEWERS'));
   if (!list.length) return [];
+  if (isTest_()) { Logger.log('Testovací kopie: přehled se se skutečnými lidmi nesdílí.'); return []; }
   const done = [];
   try { DriveApp.getFileById((ss || dashSS_()).getId()).addViewers(list); done.push('soubor Doklady s přehledem'); } catch (e) { Logger.log('Sdílení přehledu: ' + e.message); }
   try { child_(driveRoot_(), DOCS_FOLDER).addViewers(list); done.push('složka Doklady'); } catch (e) { Logger.log('Sdílení složky Doklady: ' + e.message); }

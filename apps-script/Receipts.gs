@@ -307,7 +307,7 @@ function receiptsSendCore_(who, pick, message, extra) {
       attachments: files
     };
     if (cc.length) mail.cc = cc.join(',');
-    MailApp.sendEmail(mail);
+    sendMail_(mail);
     const note = msg + (extraList.length ? (msg ? ' ' : '') + '(kopie: ' + extraList.join(', ') + ')' : '');
     batch.forEach(x => { sh.getRange(x.n, dc_(sh, 9)).setValue('odesláno'); sh.getRange(x.n, dc_(sh, 12)).setValue(stamp); sh.getRange(x.n, dc_(sh, COL_DSEL)).removeCheckboxes().clearContent(); sh.getRange(x.n, dc_(sh, COL_DBATCH)).setValue(batchId); sh.getRange(x.n, dc_(sh, COL_DMSG)).setValue(note); });
     invoicesAppend_(batch.map(x => x.r), stamp, batchId, note);

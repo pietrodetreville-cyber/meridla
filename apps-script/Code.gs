@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.55.0';
+const SCRIPT_VERSION = '1.55.1';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -187,6 +187,19 @@ function ok_(o) { return ContentService.createTextOutput(JSON.stringify(o)).setM
 // testovací kopie skriptu má ve vlastnostech skriptu ENV = test: e-maily dostanou předponu [TEST]
 function envTag_() { return PropertiesService.getScriptProperties().getProperty('ENV') === 'test' ? '[TEST] ' : ''; }
 function props_() { return PropertiesService.getScriptProperties(); }
+// Jediné místo, kudy skript posílá e-maily. V testovací kopii (ENV = test) jde každý e-mail JEN na testovací adresu
+// (vlastnost TEST_MAIL, jinak vlastník skriptu), nikdy skutečným adresátům z listu Upozornění, NOTIFY ani účetní.
+function sendMail_(m) {
+  if (props_().getProperty('ENV') !== 'test') { MailApp.sendEmail(m); return; }
+  const to = String(props_().getProperty('TEST_MAIL') || Session.getEffectiveUser().getEmail() || '').trim();
+  if (!to) throw new Error('Testovací kopie: chybí vlastnost TEST_MAIL, e-mail se neodeslal.');
+  const t = Object.assign({}, m, { to: to });
+  delete t.cc; delete t.bcc;
+  const note = 'TESTOVACÍ KOPIE – e-mail přesměrován sem. V ostré verzi by šel na: ' + [m.to, m.cc, m.bcc].filter(Boolean).join(', ');
+  t.body = note + '\n\n' + (m.body || '');
+  if (m.htmlBody) t.htmlBody = '<p style="background:#fff3cd;padding:8px;border-radius:6px;font:13px Arial">' + esc_(note) + '</p>' + m.htmlBody;
+  MailApp.sendEmail(t);
+}
 // Vrací jméno člověka podle tajného kódu, nebo '' když kód neplatí.
 // Hlavní kód (vlastnost TOKEN) patří "Správci", ostatní kódy jsou v listu Lidé.
 // ---------- lidé a jejich oprávnění ----------
@@ -611,10 +624,10 @@ function doPost(e) {
     }
     const to = props_().getProperty('NOTIFY');
     if (to && !mailsPaused_()) {
-      MailApp.sendEmail(to, envTag_() + (sup ? 'Odečet DODAVATELE: ' : 'Odečet: ') + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
-        (meter.buildingLabel ? 'Budova: ' + meter.buildingLabel + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
+      sendMail_({ to: to, subject: envTag_() + (sup ? 'Odečet DODAVATELE: ' : 'Odečet: ') + meter.name + ' = ' + value + ' ' + (meter.unit || ''),
+        body: (meter.buildingLabel ? 'Budova: ' + meter.buildingLabel + '\n' : '') + meter.name + '\nFotil(a): ' + who + '\nStav: ' + value + ' ' + (meter.unit || '') +
         (prev ? '\nPředchozí: ' + prev.value + ' (přírůstek ' + diff + ')' : '') +
-        (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : ''));
+        (note ? '\nPoznámka: ' + note : '') + (fileUrl ? '\nFotka: ' + fileUrl : '') });
     }
     return ok_({ ok: true, diff: diff, warn: note.indexOf('POZOR') >= 0, value: value, rid: rid, source: source, supplier: sup, when: when.toISOString() });
   } finally {
@@ -662,7 +675,7 @@ function sendMissingMail_(meter, who, rid, blob, aiFailed) {
     '<p style="color:#666;font-size:12px">Po klepnutí se otevře formulář s fotkou a polem pro hodnotu. Odeslaná hodnota se zapíše do tabulky.</p></div>';
   const opts = { to: to, subject: envTag_() + 'Fotoapp SVJ: chybí hodnota – ' + title, htmlBody: html, body: 'Chybí hodnota měřidla ' + title + '. Doplnit: ' + url, name: 'Fotoapp SVJ Od Vysoké' };
   if (blob) opts.inlineImages = { foto: blob };
-  MailApp.sendEmail(opts);
+  sendMail_(opts);
 }
 
 // stránka s formulářem (odkaz z e-mailu): fotka + pole pro hodnotu
@@ -944,7 +957,7 @@ function createTestSet() {
   child_(testDir, PLACES_NAME);
   const text = 'Testovací sada je v: ' + DRIVE_ROOT + ' / TESTOVACI' + nl + testDir.getUrl() + nl + nl +
     (made ? 'Vytvořena kopie tabulky: ' : 'Kopie tabulky už existovala: ') + copyName + nl + copy.getUrl() + nl + nl +
-    'Dál (v kopii): Rozšíření → Apps Script → Vlastnosti skriptu: ENV = test (a GEMINI_KEY, NOTIFY), potom spustit setup, clearTestData a resetToken.';
+    'Dál (v kopii): Rozšíření → Apps Script → Vlastnosti skriptu: ENV = test, GEMINI_KEY a TEST_MAIL (sem půjdou všechny e-maily testu), potom spustit setup, clearTestData a resetToken.';
   Logger.log(text);
   try { SpreadsheetApp.getActive().toast(text.replace(/\s+/g, ' ').slice(0, 280), 'Hotovo (podrobnosti v Protokolu spuštění)', 25); } catch (e) {}
 }
@@ -1061,7 +1074,7 @@ function reminder() {
     const lines = items.map(it => '- ' + (it.m.buildingLabel ? it.m.buildingLabel + ': ' : '') + it.m.name + (it.m.place ? ' (' + it.m.place + ')' : '') + ' – ' +
       (it.last ? (it.di.overdueDays ? 'po termínu ' + it.di.overdueDays + ' d' : 'termín je dnes') + ', naposledy ' + Utilities.formatDate(it.last.time, tz, 'd. M. yyyy') + (it.last.who ? ' (' + it.last.who + ')' : '') : 'zatím bez odečtu'));
     try {
-      MailApp.sendEmail({
+      sendMail_({
         to: rules[ri].to,
         subject: envTag_() + 'Fotoapp SVJ: chybí odečty měřidel (' + items.length + ')',
         body: 'Dobrý den,' + '\n\n' + 'u těchto měřidel chybí odečet za rozhodující termín (poslední den v měsíci, nebo interval měřidla):' + '\n\n' + lines.join('\n') + '\n\n' + 'Otevřít aplikaci: ' + base + '\n\n' + 'Tato zpráva se pro každé měřidlo posílá jen jednou za jeden termín.',
