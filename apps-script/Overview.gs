@@ -154,3 +154,32 @@ function setDashViewers() {
   const done = shareDash_();
   ui.alert('Uloženo: ' + list.join(', ') + '\n\nSdíleno pro čtení: ' + (done.join(' a ') || 'nic (podívej se do protokolu)') + '. Google jim může poslat e-mail o sdílení.');
 }
+
+// ---------- automatické obnovení přehledu (každou hodinu, jen když se v Dokladech něco změnilo) ----------
+// změny dělané přímo v tabulce (oprava částky, přeskládání, ruční zápis) se tak do přehledu dostanou samy
+function dashTick() {
+  try {
+    const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
+    const raw = JSON.stringify(docRows_(docsSheet_())) + Utilities.formatDate(new Date(), tz, 'yyyy-MM'); // nový měsíc mění dlaždici Tento měsíc
+    const sig = Utilities.base64Encode(Utilities.computeDigest(Utilities.DigestAlgorithm.MD5, raw, Utilities.Charset.UTF_8));
+    if (props_().getProperty('DASH_SIG') === sig) return;
+    dashRefresh_();
+    props_().setProperty('DASH_SIG', sig);
+  } catch (e) { Logger.log('Automatické obnovení přehledu: ' + e.message); }
+}
+const dashAutoOn_ = () => ScriptApp.getProjectTriggers().some(t => t.getHandlerFunction() === 'dashTick');
+// spouštěč se zakládá sám (při otevření souboru dokladů), dokud ho někdo nevypne v menu
+function ensureDashAuto_() {
+  try { if (props_().getProperty('DASH_AUTO') !== 'off' && !dashAutoOn_()) ScriptApp.newTrigger('dashTick').timeBased().everyHours(1).create(); } catch (e) { Logger.log('Spouštěč přehledu: ' + e.message); }
+}
+function toggleDashAuto() {
+  const ui = SpreadsheetApp.getUi();
+  if (dashAutoOn_()) {
+    ScriptApp.getProjectTriggers().filter(t => t.getHandlerFunction() === 'dashTick').forEach(t => ScriptApp.deleteTrigger(t));
+    props_().setProperty('DASH_AUTO', 'off');
+    ui.alert('Automatické obnovení přehledu je vypnuté. Přehled se dál obnoví při zápisu dokladu z aplikace a ručně z menu.');
+  } else {
+    props_().deleteProperty('DASH_AUTO'); ensureDashAuto_();
+    ui.alert('Automatické obnovení přehledu je zapnuté: každou hodinu, a jen když se v Dokladech něco změnilo.');
+  }
+}

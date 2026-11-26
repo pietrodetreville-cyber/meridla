@@ -35,6 +35,7 @@ function docsSS_() {
 // menu v souboru dokladů (instalovaný spouštěč při otevření)
 function docsOnOpen() {
   try { clearSentChecks_(docsSheet_()); } catch (e) {}
+  ensureDashAuto_();
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Doklady')
     .addItem('Zaregistrovat došlou fakturu (PDF nebo fotka)', 'invoiceDialog')
@@ -42,7 +43,7 @@ function docsOnOpen() {
     .addItem('Obnovit přehled pro výbor', 'refreshDash')
     .addItem('Seřadit Faktury podle DUZP', 'sortInvoices')
     .addSeparator()
-    .addSubMenu(ui.createMenu('Nastavení').addItem('E-mail účetní', 'setAccountant').addItem('Kopie e-mailu (výbor)', 'setAccountantCc').addItem('Kdo z výboru vidí doklady a přehled', 'setDashViewers'))
+    .addSubMenu(ui.createMenu('Nastavení').addItem('E-mail účetní', 'setAccountant').addItem('Kopie e-mailu (výbor)', 'setAccountantCc').addItem('Kdo z výboru vidí doklady a přehled', 'setDashViewers').addItem('Automatické obnovení přehledu (každou hodinu) zapnout / vypnout', 'toggleDashAuto'))
     .addToUi();
 }
 // z menu tabulky měřidel: odkaz na soubor dokladů
