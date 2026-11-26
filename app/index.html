@@ -366,7 +366,6 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
     <div class="note hide" id="raccnote"></div>
     <div id="rlist"><p class="note">Načítám…</p></div>
   </div>
-  <button class="sec" id="rhome" type="button" style="width:100%">Zpět na rozcestník</button>
 </section>
 
 <section id="detail" class="hide">
@@ -429,7 +428,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.54.6';
+const VERSION = '1.54.7';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -618,7 +617,7 @@ async function loadList() {
   applyEdit(); renderAll();
 }
 $('reload').onclick = loadList;
-$('hrefresh').onclick = async () => { const b = $('hrefresh'); b.classList.add('spin'); try { await flushQueue(); await loadList(); } finally { setTimeout(() => b.classList.remove('spin'), 400); } };
+$('hrefresh').onclick = async () => { const b = $('hrefresh'); b.classList.add('spin'); try { await flushQueue(); if (!$('docs').classList.contains('hide')) await loadReceipts(); else await loadList(); } finally { setTimeout(() => b.classList.remove('spin'), 400); } };
 $('list').addEventListener('click', e => {
   const b = e.target.closest('.meter'); if (!b) return;
   current = meters.find(m => m.id === b.dataset.id); if (current) openMeter(current);
@@ -698,7 +697,7 @@ $('hdocs').onclick = openHub;
 $('hubm').onclick = () => { hubNav = true; show('home'); };
 $('hubr').onclick = () => openDocs('paragon');
 $('hubf').onclick = () => openDocs('faktura');
-$('rhome').onclick = openHub;
+
 function rReset() {
   rPhoto = ''; rMime = 'image/jpeg'; $('rform').classList.add('hide'); $('rprev').removeAttribute('src'); $('rprev').classList.remove('hide'); $('rfilebox').classList.add('hide');
   ['ramount', 'rvendor', 'rpurpose', 'rnote', 'rinvno', 'rico', 'rduzp', 'rdue'].forEach(i => { $(i).value = ''; });
@@ -1046,7 +1045,7 @@ $('pupload').onclick = async () => {
 // ================= obrazovky =================
 function show(name) {
   ['hub', 'home', 'meter', 'hist', 'detail', 'docs'].forEach(n => $(n).classList.toggle('hide', !(n === name || (name === 'meter' && n === 'hist'))));
-  $('hero').style.display = name === 'home' || name === 'hub' ? '' : 'none'; document.body.classList.toggle('hubon', name === 'hub'); $('fbox').style.display = name === 'home' ? '' : 'none';
+  $('hero').style.display = name === 'home' || name === 'hub' || name === 'docs' ? '' : 'none'; document.body.classList.toggle('hubon', name === 'hub'); $('fbox').style.display = name === 'home' ? '' : 'none';
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
