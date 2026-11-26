@@ -76,8 +76,11 @@ img.shot{width:100%;border-radius:10px;display:block}
 .hrow[data-rid]{cursor:pointer}
 .hub{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:4px}
 .hubt{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;aspect-ratio:1;width:100%;text-align:center;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:14px;padding:8px 6px;font-weight:400;box-sizing:border-box}
-.hubt:active{border-color:var(--acc)}
-.hubt .hico{font-size:2rem;line-height:1;flex:none}
+.hubt{position:relative;overflow:hidden;transition:transform .12s ease;background:var(--card);background:linear-gradient(155deg,color-mix(in srgb,var(--tc) 26%,transparent),color-mix(in srgb,var(--tc) 5%,transparent) 72%),var(--card);border-color:color-mix(in srgb,var(--tc) 38%,var(--line));box-shadow:0 6px 18px color-mix(in srgb,var(--tc) 16%,transparent)}
+.hubt::after{content:'';position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--tc);opacity:.75}
+.hubt:active{transform:scale(.96)}
+#hubm{--tc:#2563eb}#hubr{--tc:#e08a00}#hubf{--tc:#7c3aed}
+.hubt .hico{width:3.1rem;height:3.1rem;border-radius:50%;display:grid;place-items:center;font-size:1.65rem;line-height:1;flex:none;background:color-mix(in srgb,var(--tc) 16%,var(--pop));box-shadow:0 4px 12px color-mix(in srgb,var(--tc) 28%,transparent)}
 .hubt .ht{min-width:0}
 .hubt b{display:block;font-size:.9rem;line-height:1.2;hyphens:auto}
 .hubt .s{display:block;font-size:.86rem;color:var(--mut);margin-top:2px}
@@ -426,7 +429,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.54.5';
+const VERSION = '1.54.6';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
