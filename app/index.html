@@ -80,6 +80,21 @@ img.shot{width:100%;border-radius:10px;display:block}
 .hubt::after{content:'';position:absolute;left:0;right:0;bottom:0;height:4px;background:var(--tc);opacity:.75}
 .hubt:active{transform:scale(.96)}
 #hubm{--tc:#2563eb}#hubr{--tc:#e08a00}#hubf{--tc:#7c3aed}
+.hubdash{display:grid;gap:10px;margin-top:16px}
+.dcard{background:var(--card);border:1px solid var(--line);border-left:4px solid var(--tc);border-radius:14px;padding:12px 14px;cursor:pointer;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px)}
+.dcard:active{transform:scale(.99)}
+.dcard h3{margin:0 0 8px;font-size:.8rem;text-transform:uppercase;letter-spacing:.05em;color:var(--mut);font-weight:700;display:flex;justify-content:space-between}
+.dstats{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.dstat b{display:block;font-size:1.3rem;font-weight:800;font-variant-numeric:tabular-nums;color:var(--fg);line-height:1.2}
+.dstat span{font-size:.8rem;color:var(--mut)}
+.dbar{height:8px;border-radius:4px;background:var(--line);overflow:hidden;margin:10px 0 2px}
+.dbar i{display:block;height:100%;background:var(--tc);border-radius:4px}
+.dnote{font-size:.82rem;color:var(--mut);margin-top:8px}
+.dnote.warn{color:var(--warn);font-weight:600}
+.dsub{font-size:.78rem;color:var(--mut);margin:10px 0 2px;font-weight:700}
+.drow{display:flex;justify-content:space-between;gap:10px;font-size:.86rem;padding:5px 0;border-top:1px solid var(--line)}
+.drow span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drow b{flex:none;font-variant-numeric:tabular-nums}
 .hubt .hico{width:3.1rem;height:3.1rem;border-radius:50%;display:grid;place-items:center;font-size:1.65rem;line-height:1;flex:none;background:color-mix(in srgb,var(--tc) 16%,var(--pop));box-shadow:0 4px 12px color-mix(in srgb,var(--tc) 28%,transparent)}
 .hubt .ht{min-width:0}
 .hubt b{display:block;font-size:.9rem;line-height:1.2;hyphens:auto}
@@ -275,6 +290,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
     <button type="button" class="hubt" id="hubr"><span class="hico">🧾</span><span class="ht"><b>Účtenky (paragony)</b></span><span class="go">›</span></button>
     <button type="button" class="hubt" id="hubf"><span class="hico">📄</span><span class="ht"><b>Faktury</b></span><span class="go">›</span></button>
   </div>
+  <div id="hubdash" class="hubdash"></div>
 </section>
 
 <section id="home">
@@ -428,7 +444,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.54.7';
+const VERSION = '1.55.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -617,7 +633,7 @@ async function loadList() {
   applyEdit(); renderAll();
 }
 $('reload').onclick = loadList;
-$('hrefresh').onclick = async () => { const b = $('hrefresh'); b.classList.add('spin'); try { await flushQueue(); if (!$('docs').classList.contains('hide')) await loadReceipts(); else await loadList(); } finally { setTimeout(() => b.classList.remove('spin'), 400); } };
+$('hrefresh').onclick = async () => { const b = $('hrefresh'); b.classList.add('spin'); try { await flushQueue(); if (!$('docs').classList.contains('hide')) await loadReceipts(); else { await loadList(); if (!$('hub').classList.contains('hide')) await fetchHubDocs(); } } finally { setTimeout(() => b.classList.remove('spin'), 400); } };
 $('list').addEventListener('click', e => {
   const b = e.target.closest('.meter'); if (!b) return;
   current = meters.find(m => m.id === b.dataset.id); if (current) openMeter(current);
@@ -691,8 +707,56 @@ function openDocs(mode) {
   $('rsave').textContent = inv ? 'Uložit fakturu' : 'Uložit doklad';
   show('docs'); rReset(); paintReceipts(); loadReceipts();
 }
-function openHub() { if (!canDocs) { show('home'); return; } paintHub(); show('hub'); }
-function paintHub() {}
+function openHub() { if (!canDocs) { show('home'); return; } paintHub(); show('hub'); fetchHubDocs(); }
+let hubErr = false;
+// přehledy pod dlaždicemi: měřidla ze seznamu, doklady ze stejného seznamu jako obrazovka dokladů
+function paintHub() {
+  const box = $('hubdash'); if (!box) return;
+  const esc = v => String(v === undefined || v === null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const today = ymdOf(new Date()), ym = today.slice(0, 7);
+  const ymd = v => { if (!v) return ''; const d = new Date(v); return isNaN(d) ? '' : ymdOf(d); };
+  const ago = t => { const d = Math.floor((Date.now() - new Date(t)) / 864e5); return d <= 0 ? 'dnes' : d === 1 ? 'včera' : 'před ' + days(d); };
+  const stat = (v, l) => '<div class="dstat"><b>' + v + '</b><span>' + l + '</span></div>';
+  const kc = v => Math.round(v).toLocaleString('cs-CZ') + ' Kč';
+  const card = (go, tc, title, body) => '<div class="dcard" data-go="' + go + '" style="--tc:' + tc + '"><h3><span>' + title + '</span><span aria-hidden="true">›</span></h3>' + body + '</div>';
+  let h = '';
+  // měřidla
+  const ms = meters, due = ms.filter(isDue).length, done = ms.length - due, pend = ms.filter(m => m.pending).length;
+  const last = ms.filter(m => m.last && m.last.time).sort((a, b) => new Date(b.last.time) - new Date(a.last.time))[0];
+  h += card('m', '#2563eb', '📏 Měřidla', !ms.length ? '<div class="dnote">Načítám…</div>' :
+    '<div class="dstats">' + stat(due, due ? plural(due, 'čeká na odečet', 'čekají na odečet', 'čeká na odečet') : 'vše odečteno ✓') + stat(done + ' / ' + ms.length, 'odečteno') + '</div>' +
+    '<div class="dbar" role="img" aria-label="Odečteno ' + done + ' z ' + ms.length + '"><i style="width:' + Math.round(done / ms.length * 100) + '%"></i></div>' +
+    (last ? '<div class="dnote">Poslední odečet: ' + esc(last.name) + (last.building ? ' · ' + esc(last.building) : '') + ', ' + ago(last.last.time) + (last.last.who ? ' (' + esc(last.last.who) + ')' : '') + '</div>' : '') +
+    (pend ? '<div class="dnote warn">⚠ U ' + pend + ' ' + plural(pend, 'měřidla', 'měřidel', 'měřidel') + ' čeká fotka na doplnění hodnoty</div>' : ''));
+  // doklady
+  if (canDocs) {
+    const mine = canAcc ? '' : ' (moje)';
+    if (!rAll) {
+      const t = '<div class="dnote">' + (hubErr ? 'Bez připojení, přehled nejde načíst.' : 'Načítám…') + '</div>';
+      h += card('r', '#e08a00', '🧾 Účtenky' + mine, t) + card('f', '#7c3aed', '📄 Faktury' + mine, t);
+    } else {
+      const unsent = a => a.filter(x => !/^odesl/i.test(x.status)), sum = a => a.reduce((t, x) => t + (Number(x.amount) || 0), 0);
+      const vend = x => esc(String(x.vendor || '–').replace(/,\s*IČO.*$/, ''));
+      const recs = rAll.filter(x => x.type !== 'faktura'), invs = rAll.filter(x => x.type === 'faktura');
+      const rm = recs.filter(x => ymd(x.date).slice(0, 7) === ym), ru = unsent(recs), rl = recs[0];
+      h += card('r', '#e08a00', '🧾 Účtenky' + mine,
+        '<div class="dstats">' + stat(kc(sum(rm)), 'tento měsíc · ' + rm.length + ' ks') + stat(ru.length, ru.length ? 'neodesláno účetní · ' + kc(sum(ru)) : 'vše odesláno účetní ✓') + '</div>' +
+        (rl ? '<div class="dnote">Poslední: ' + vend(rl) + ' · ' + fmtDay(rl.date) + ' · ' + fmtKc(rl.amount) + '</div>' : '<div class="dnote">Zatím žádné účtenky.</div>'));
+      const im = invs.filter(x => ymd(x.duzp || x.date).slice(0, 7) === ym), iu = unsent(invs);
+      const up = invs.filter(x => x.due && ymd(x.due) >= today).sort((a, b) => ymd(a.due) < ymd(b.due) ? -1 : 1).slice(0, 3);
+      h += card('f', '#7c3aed', '📄 Faktury' + mine,
+        '<div class="dstats">' + stat(kc(sum(im)), 'tento měsíc · ' + im.length + ' ks') + stat(iu.length, iu.length ? 'neodesláno účetní · ' + kc(sum(iu)) : 'vše odesláno účetní ✓') + '</div>' +
+        '<div class="dsub">Nejbližší splatnosti</div>' + (up.length ? up.map(x => '<div class="drow"><span>' + fmtDay(x.due) + ' · ' + vend(x) + '</span><b>' + fmtKc(x.amount) + '</b></div>').join('') : '<div class="dnote" style="margin-top:2px">Žádná faktura se splatností před sebou.</div>'));
+    }
+  }
+  box.innerHTML = h;
+}
+async function fetchHubDocs() {
+  if (!canDocs || !ENDPOINT || !token()) return;
+  try { const r = await api('?token=' + encodeURIComponent(token()) + '&action=receipts'); if (r.ok) { rAll = r.items; rAccMail = !!r.accountant; hubErr = false; } } catch (e) { hubErr = true; }
+  paintHub();
+}
+$('hubdash').onclick = e => { const c = e.target.closest && e.target.closest('.dcard'); if (!c) return; if (c.dataset.go === 'm') $('hubm').click(); else openDocs(c.dataset.go === 'f' ? 'faktura' : 'paragon'); };
 $('hdocs').onclick = openHub;
 $('hubm').onclick = () => { hubNav = true; show('home'); };
 $('hubr').onclick = () => openDocs('paragon');
@@ -808,7 +872,7 @@ async function loadReceipts() {
   try {
     const r = await api('?token=' + encodeURIComponent(token()) + '&action=receipts');
     if (!r.ok) { box.innerHTML = '<p class="note warn">Doklady se nepodařilo načíst.</p>'; return; }
-    rAll = r.items; rAccMail = !!r.accountant; paintReceipts();
+    rAll = r.items; rAccMail = !!r.accountant; paintReceipts(); paintHub();
   } catch (e) { box.innerHTML = '<p class="note warn">Bez připojení: doklady nejde načíst.</p>'; }
 }
 function paintReceipts() {
