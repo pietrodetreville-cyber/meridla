@@ -9,7 +9,12 @@ const SHEET_DOCS = 'Doklady', DOCS_FOLDER = 'Doklady';
 // Doklady a Faktury jsou v samostatné Google tabulce „Doklady SVJ Od Vysoké“ ve složce SVJ_app/OSTRE (TESTOVACI).
 // Vytvoří se sama při prvním použití; její ID je ve vlastnosti skriptu DOCS_SS. Při otevření má vlastní menu Doklady.
 function docsFileName_() { return 'Doklady SVJ Od Vysoké' + (props_().getProperty('ENV') === 'test' ? ' – TEST' : ''); }
-function docsSSIfExists_() { const id = props_().getProperty('DOCS_SS'); if (!id) return null; try { return SpreadsheetApp.openById(id); } catch (e) { return null; } }
+// Když soubor existuje (DOCS_SS je vyplněné), ale zrovna nejde otevřít (výpadek Disku), skončí to chybou –
+// nikdy se kvůli tomu nezaloží nový prázdný soubor a doklady se nezapíšou jinam (stejně jako u měřidel).
+function docsSSIfExists_() {
+  const id = props_().getProperty('DOCS_SS'); if (!id) return null;
+  try { return SpreadsheetApp.openById(id); } catch (e) { throw new Error('Soubor dokladů teď nejde otevřít (zkus to za chvíli): ' + e.message); }
+}
 function docsSS_() {
   const have = docsSSIfExists_(); if (have) return have;
   const ss = SpreadsheetApp.create(docsFileName_());
@@ -195,7 +200,22 @@ function receiptsList_(P) {
   const v = docRows_(sh).filter(r => all || String(r[6]) === P.name).slice(-60);
   const iso = x => x && Object.prototype.toString.call(x) === '[object Date]' ? x.toISOString() : String(x || '');
   const items = v.filter(r => r[9]).map(r => ({ rid: String(r[9]), num: String(r[COL_DNUM - 1] || ''), date: iso(r[1]), amount: Number(r[2]), vendor: String(r[3] || ''), purpose: String(r[4] || ''), building: String(r[5] || ''), who: String(r[6] || ''), pid: driveId_(r[7]), status: String(r[8] || ''), sent: iso(r[11]), type: String(r[COL_DTYPE - 1] || 'paragon'), invNo: String(r[COL_DINVNO - 1] || ''), duzp: iso(r[COL_DDUZP - 1]), due: iso(r[COL_DDUE - 1]), entered: iso(r[0]), batch: String(r[COL_DBATCH - 1] || ''), msg: String(r[COL_DMSG - 1] || ''), note: String(r[10] || '').split(' · ').filter(t => !/^soubor:/.test(t)).join(' · ') })).reverse();
-  return { ok: true, items: items, total: n, accountant: !!props_().getProperty('ACCOUNTANT') };
+  return { ok: true, items: items, total: n, stats: receiptsStats_(docRows_(sh).filter(r => r[9] && (all || String(r[6]) === P.name))), accountant: !!props_().getProperty('ACCOUNTANT') };
+}
+// souhrny pro rozcestník ze VŠECH dokladů (seznam výše má jen posledních 60)
+function receiptsStats_(rows) {
+  const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone(), d = x => Object.prototype.toString.call(x) === '[object Date]' && !isNaN(x) ? x : null;
+  const ymd = x => d(x) ? Utilities.formatDate(x, tz, 'yyyy-MM-dd') : '', today = Utilities.formatDate(new Date(), tz, 'yyyy-MM-dd'), ym = today.slice(0, 7);
+  const st = () => ({ count: 0, month: 0, monthSum: 0, unsent: 0, unsentSum: 0 }), out = { paragon: st(), faktura: Object.assign(st(), { up: [] }) };
+  rows.forEach(r => {
+    const inv = String(r[COL_DTYPE - 1] || '') === 'faktura', s = inv ? out.faktura : out.paragon, a = Number(r[2]) || 0;
+    s.count++;
+    if (ymd(inv ? (d(r[COL_DDUZP - 1]) || r[1]) : r[1]).slice(0, 7) === ym) { s.month++; s.monthSum += a; }
+    if (!/^odesl/i.test(String(r[8] || ''))) { s.unsent++; s.unsentSum += a; }
+    if (inv && ymd(r[COL_DDUE - 1]) >= today) s.up.push({ due: r[COL_DDUE - 1].toISOString(), dueYmd: ymd(r[COL_DDUE - 1]), vendor: String(r[3] || ''), amount: a, num: String(r[COL_DNUM - 1] || '') });
+  });
+  out.faktura.up = out.faktura.up.sort((x, y) => x.dueYmd < y.dueYmd ? -1 : x.dueYmd > y.dueYmd ? 1 : 0).slice(0, 3);
+  return out;
 }
 
 // AI přečte z fotky paragonu datum, celkovou částku a obchod (jen předvyplnění, uživatel to zkontroluje)
