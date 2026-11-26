@@ -208,6 +208,9 @@ html:has(#splash:not(.out)){overflow:hidden}
 .adminbar.hide{display:none}
 .adminbar button{padding:4px 10px;font-size:.8rem;border-radius:8px;background:transparent;color:var(--fg);border:1px solid #e0a800}
 .hero .hi{font-size:1.05rem;font-weight:700;color:var(--fg)}
+.herorow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.herorow .hi{min-width:0}
+.hubon #hdocs{display:none}
 .hero .big{font-size:1.02rem;font-weight:800;margin:1px 0 7px}
 .bar{height:6px;border-radius:999px;background:var(--line);overflow:hidden}
 .bar i{display:block;height:100%;width:0;border-radius:999px;background:var(--acc);transition:width .8s cubic-bezier(.2,.8,.2,1)}
@@ -254,8 +257,8 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div id="envbar" class="hide">🧪 TESTOVACÍ VERZE · jiná tabulka než ostrý provoz</div>
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
-<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span><span class="note" id="vms"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hdocs" type="button" aria-label="Rozcestník" title="Rozcestník">🏠</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
-<div class="hero" id="hero"><div class="hi" id="who"></div><div class="adminbar hide" id="adminbar"><span>🔓 Režim admin je otevřený</span><button type="button" id="adminclose">Zavřít ✕</button></div></div>
+<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span><span class="note" id="vms"></span></h1><div class="tools"><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
+<div class="hero" id="hero"><div class="herorow"><div class="hi" id="who"></div><div class="tools"><button class="themebtn" id="hdocs" type="button" aria-label="Rozcestník" title="Rozcestník">🏠</button><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button></div></div><div class="adminbar hide" id="adminbar"><span>🔓 Režim admin je otevřený</span><button type="button" id="adminclose">Zavřít ✕</button></div></div>
 <div class="fbox" id="fbox">
 <button type="button" class="fhead" id="fhead" aria-expanded="true"><span id="ftitle">Filtry</span><span id="fcol" aria-hidden="true">▴</span></button>
 <div class="fbar hide" id="fbar"></div>
@@ -423,7 +426,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.54.3';
+const VERSION = '1.54.4';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -1040,7 +1043,7 @@ $('pupload').onclick = async () => {
 // ================= obrazovky =================
 function show(name) {
   ['hub', 'home', 'meter', 'hist', 'detail', 'docs'].forEach(n => $(n).classList.toggle('hide', !(n === name || (name === 'meter' && n === 'hist'))));
-  $('hero').style.display = name === 'home' || name === 'hub' ? '' : 'none'; $('fbox').style.display = name === 'home' ? '' : 'none';
+  $('hero').style.display = name === 'home' || name === 'hub' ? '' : 'none'; document.body.classList.toggle('hubon', name === 'hub'); $('fbox').style.display = name === 'home' ? '' : 'none';
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
