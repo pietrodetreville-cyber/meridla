@@ -265,9 +265,9 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 
 <section id="hub" class="hide">
   <div class="hub">
-    <button type="button" class="hubt" id="hubm"><span class="hico">📏</span><span class="ht"><b>Měřidla</b><span class="s" id="hubms">Odečty vody, elektřiny a tepla</span></span><span class="go">›</span></button>
-    <button type="button" class="hubt" id="hubr"><span class="hico">🧾</span><span class="ht"><b>Účtenky (paragony)</b><span class="s">Vyfotit nákup, seznam, odeslání účetní</span></span><span class="go">›</span></button>
-    <button type="button" class="hubt" id="hubf"><span class="hico">📄</span><span class="ht"><b>Faktury</b><span class="s">Vyfotit, nebo vybrat soubor v telefonu (i PDF). AI předvyplní údaje.</span></span><span class="go">›</span></button>
+    <button type="button" class="hubt" id="hubm"><span class="hico">📏</span><span class="ht"><b>Měřidla</b></span><span class="go">›</span></button>
+    <button type="button" class="hubt" id="hubr"><span class="hico">🧾</span><span class="ht"><b>Účtenky (paragony)</b></span><span class="go">›</span></button>
+    <button type="button" class="hubt" id="hubf"><span class="hico">📄</span><span class="ht"><b>Faktury</b></span><span class="go">›</span></button>
   </div>
 </section>
 
@@ -423,7 +423,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.54.0';
+const VERSION = '1.54.1';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -687,7 +687,7 @@ function openDocs(mode) {
   show('docs'); rReset(); paintReceipts(); loadReceipts();
 }
 function openHub() { if (!canDocs) { show('home'); return; } paintHub(); show('hub'); }
-function paintHub() { const n = meters.filter(m => editable(m) && isDue(m)).length; $('hubms').textContent = !meters.length ? 'Odečty vody, elektřiny a tepla' : n ? n + ' ' + plural(n, 'měřidlo čeká', 'měřidla čekají', 'měřidel čeká') + ' na odečet' : 'Všechno odečtené ✓'; }
+function paintHub() {}
 $('hdocs').onclick = openHub;
 $('hubm').onclick = () => { hubNav = true; show('home'); };
 $('hubr').onclick = () => openDocs('paragon');
