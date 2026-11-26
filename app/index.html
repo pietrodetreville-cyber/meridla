@@ -219,7 +219,7 @@ html:has(#splash:not(.out)){overflow:hidden}
 .brand h1{margin:0;font-size:1.1rem;line-height:1.15;flex:1;min-width:0}
 .brand h1 .note{display:block;font-size:.72rem;font-weight:500;margin-top:2px}
 body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #homenote,body.adminmode #reload{display:none!important}
-.tools{flex:none;display:flex;gap:2px;padding:3px;border-radius:999px;background:var(--pop);border:1px solid var(--line);box-shadow:0 2px 8px #0a2a4015}
+.tools{flex:none;display:flex;gap:4px;padding:0;background:none;border:0;box-shadow:none}
 .tools .themebtn{width:34px;height:34px;font-size:1.05rem;border:0;box-shadow:none;background:transparent}
 .tools .themebtn:active{background:var(--line)}
 .themebtn.hide,.tools .themebtn.hide{display:none}
@@ -426,7 +426,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.54.4';
+const VERSION = '1.54.5';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
