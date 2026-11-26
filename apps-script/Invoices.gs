@@ -34,13 +34,19 @@ function invUiList() {
 // AI přečte údaje z PDF faktury (jen předvyplnění, člověk je zkontroluje)
 function invUiRead(id) {
   try {
-    const key = props_().getProperty('GEMINI_KEY');
-    if (!key) return { ok: false, error: 'Chybí klíč AI (GEMINI_KEY).' };
     const f = DriveApp.getFileById(String(id || ''));
     if (f.getSize() > 15 * 1024 * 1024) return { ok: false, error: 'Soubor je větší než 15 MB.' };
-    const mime = String(f.getMimeType()).toLowerCase();
+    return invRead_(Utilities.base64Encode(f.getBlob().getBytes()), f.getMimeType());
+  } catch (e) { return { ok: false, error: e.message }; }
+}
+// společné čtení faktury (okno v tabulce i aplikace v telefonu)
+function invRead_(b64, mimeIn) {
+  try {
+    const key = props_().getProperty('GEMINI_KEY');
+    if (!key) return { ok: false, error: 'Chybí klíč AI (GEMINI_KEY).' };
+    if (!b64) return { ok: false, error: 'Chybí soubor faktury.' };
+    const mime = String(mimeIn || '').toLowerCase();
     if (INV_TYPES.indexOf(mime) < 0) return { ok: false, error: 'Tento typ souboru AI nepřečte (jen PDF nebo fotka JPG/PNG).' };
-    const b64 = Utilities.base64Encode(f.getBlob().getBytes());
     const prompt = 'V příloze je došlá faktura (PDF nebo fotka) pro společenství vlastníků. Vyčti z ní: dodavatel (název firmy), ico (IČO dodavatele), cislo (číslo faktury / variabilní symbol faktury), vystaveni (datum vystavení), duzp (datum uskutečnění zdanitelného plnění), splatnost (datum splatnosti), castka (celková fakturovaná částka v Kč včetně DPH, ne zálohy ani přeplatek), predmet (krátce předmět plnění, nejvýš 8 slov). Data ve formátu YYYY-MM-DD. Co nejde přečíst, nech prázdné, nic nevymýšlej.';
     const schema = { type: 'OBJECT', properties: { dodavatel: { type: 'STRING', nullable: true }, ico: { type: 'STRING', nullable: true }, cislo: { type: 'STRING', nullable: true }, vystaveni: { type: 'STRING', nullable: true }, duzp: { type: 'STRING', nullable: true }, splatnost: { type: 'STRING', nullable: true }, castka: { type: 'NUMBER', nullable: true }, predmet: { type: 'STRING', nullable: true } } };
     const think = m => /gemini-2\.5/.test(m) ? { thinkingBudget: 0 } : /gemini-3/.test(m) ? { thinkingLevel: 'minimal' } : null;
@@ -66,26 +72,63 @@ function invUiRead(id) {
 
 // registrace faktury: zápis do listu Doklady (typ faktura), interní číslo, přejmenování a přesun PDF do složky Doklady
 function invUiRegister(d) { const r = invUiRegisterCore_(d); if (r.ok) dashRefreshSafe_(); return r; }
-function invUiRegisterCore_(d) {
+// kontrola a převod údajů faktury (společné pro okno v tabulce i aplikaci)
+function invParse_(d) {
   const tz = SpreadsheetApp.getActive().getSpreadsheetTimeZone();
   const parse = v => { if (!/^\d{4}-\d{2}-\d{2}$/.test(String(v || ''))) return null; try { return Utilities.parseDate(v + ' 12:00', tz, 'yyyy-MM-dd HH:mm'); } catch (e) { return null; } };
   const amount = Math.round(docNum_(d.amount) * 100) / 100, issued = parse(d.issued), duzp = parse(d.duzp), due = parse(d.due);
-  if (!d.id) return { ok: false, error: 'Vyber fakturu (PDF nebo fotku).' };
-  if (!issued && !duzp) return { ok: false, error: 'Zadej datum vystavení nebo DUZP.' };
-  if (!isFinite(amount)) return { ok: false, error: 'Zadej částku jako číslo.' };
-  if (!String(d.purpose || '').trim()) return { ok: false, error: 'Napiš účel (na co faktura je).' };
-  const vendor = [String(d.vendor || '').trim(), String(d.ico || '').replace(/\s/g, '') ? 'IČO ' + String(d.ico).replace(/\s/g, '') : ''].filter(Boolean).join(', ');
+  if (!issued && !duzp) return { error: 'Zadej datum vystavení nebo DUZP.' };
+  if (!isFinite(amount)) return { error: 'Zadej částku jako číslo.' };
+  if (!String(d.purpose || '').trim()) return { error: 'Napiš účel (na co faktura je).' };
+  const ico = String(d.ico || '').replace(/\s/g, '');
+  const vendor = [String(d.vendor || '').trim(), ico ? 'IČO ' + ico : ''].filter(Boolean).join(', ');
+  return { amount: amount, issued: issued, duzp: duzp, due: due, vendor: vendor, ico: ico, invNo: String(d.invNo || '').trim() };
+}
+// stejná faktura (číslo faktury a dodavatel podle IČO, jinak podle názvu) už zaregistrovaná? vrátí text upozornění
+function invDup_(rows, d, v) {
+  if (!v.invNo) return '';
+  const ven = String(d.vendor || '').trim().toLowerCase();
+  const same = rows.find(r => { const s = String(r[3] || ''); return String(r[COL_DINVNO - 1] || '').trim() === v.invNo && (v.ico ? s.indexOf('IČO ' + v.ico) >= 0 : !ven || s.toLowerCase().indexOf(ven) === 0); });
+  return same ? 'Faktura ' + v.invNo + ' od ' + (d.vendor || 'tohoto dodavatele') + ' už je zaregistrovaná jako ' + (same[COL_DNUM - 1] || same[9]) + '.' : '';
+}
+// zápis řádku faktury do listu Doklady (soubor už je ve složce Doklady)
+function invAppend_(sh, f, v, d, who, rid, num, note) {
+  const row = docAppend_(sh, [new Date(), v.issued || v.duzp, v.amount, v.vendor, String(d.purpose).trim().slice(0, 200), String(d.building || '').slice(0, 40), who, f.getUrl(), 'nový', rid, String(note || '').slice(0, 300), '', false, '', '', num, 'faktura', v.invNo, v.duzp || '', v.due || '']);
+  sh.getRange(row, dc_(sh, COL_DSEL)).insertCheckboxes();
+  setPhotoLink_(sh, row, dc_(sh, 8), '📄 ' + num, f.getUrl());
+}
+
+// faktura z aplikace v telefonu: vyfocená nebo vybraná ze souboru (PDF / obrázek), údaje zkontroloval člověk
+function invoiceSave_(body, who) {
+  const v = invParse_(body);
+  if (v.error) return { ok: false, error: v.error };
+  const mime = String(body.mime || '').toLowerCase();
+  if (!body.file) return { ok: false, error: 'Chybí soubor faktury.' };
+  if (INV_TYPES.indexOf(mime) < 0) return { ok: false, error: 'Fakturu jde uložit jen jako PDF nebo fotku.' };
+  let rid = String(body.clientId || '').replace(/[^A-Za-z0-9]/g, '').slice(0, 24);
+  if (!rid) rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10);
   const lock = LockService.getScriptLock(); lock.waitLock(30000);
   try {
     const sh = docsSheet_(), rows = docRows_(sh);
-    // stejná faktura (číslo faktury a dodavatel) už zaregistrovaná?
-    const invNo = String(d.invNo || '').trim();
-    if (invNo && !d.force) {
-      const ico = String(d.ico || '').replace(/\s/g, ''), ven = String(d.vendor || '').trim().toLowerCase();
-      // stejné číslo faktury a stejný dodavatel (podle IČO, jinak podle názvu)
-      const same = rows.find(r => { const v = String(r[3] || ''); return String(r[COL_DINVNO - 1] || '').trim() === invNo && (ico ? v.indexOf('IČO ' + ico) >= 0 : !ven || v.toLowerCase().indexOf(ven) === 0); });
-      if (same) return { ok: false, dup: true, error: 'Faktura ' + invNo + ' od ' + d.vendor + ' už je zaregistrovaná jako ' + (same[COL_DNUM - 1] || same[9]) + '.' };
-    }
+    if (rows.some(r => String(r[9]) === rid)) return { ok: true, dup: true, rid: rid };
+    const same = body.force ? '' : invDup_(rows, body, v);
+    if (same) return { ok: false, dup: true, error: same };
+    const num = nextDocNum_(sh, v.duzp || v.issued);
+    const f = child_(driveRoot_(), DOCS_FOLDER).createFile(Utilities.newBlob(Utilities.base64Decode(body.file), mime, num + (isTest_() ? ' TEST' : '') + docExt_(mime)));
+    invAppend_(sh, f, v, body, who, rid, num, body.note);
+    return { ok: true, rid: rid, num: num };
+  } finally { lock.releaseLock(); }
+}
+
+function invUiRegisterCore_(d) {
+  if (!d.id) return { ok: false, error: 'Vyber fakturu (PDF nebo fotku).' };
+  const v = invParse_(d);
+  if (v.error) return { ok: false, error: v.error };
+  const lock = LockService.getScriptLock(); lock.waitLock(30000);
+  try {
+    const sh = docsSheet_(), rows = docRows_(sh);
+    const same = d.force ? '' : invDup_(rows, d, v);
+    if (same) return { ok: false, dup: true, error: same };
     let f; try { f = DriveApp.getFileById(String(d.id)); } catch (e) { return { ok: false, error: 'Soubor se nepodařilo najít na Disku.' }; }
     // jen PDF ze složky Došlé faktury tohoto prostředí (test a ostrá nesmí sdílet jeden soubor) a ještě nezaregistrované
     const inbox = invInbox_().getId(), parents = f.getParents(); let inInbox = false;
@@ -93,14 +136,11 @@ function invUiRegisterCore_(d) {
     if (!inInbox) return { ok: false, error: 'Tento soubor není ve složce Došlé faktury ' + (isTest_() ? 'TESTU' : 'OSTRÉ verze') + '. Nahraj fakturu znovu do správné složky (stejný soubor nepoužívej v testu i na ostré).' };
     const fid = f.getId(), used = rows.find(r => String(r[7] || '').indexOf(fid) >= 0);
     if (used) return { ok: false, error: 'Tento soubor už je zaregistrovaný jako ' + (used[COL_DNUM - 1] || used[9]) + '.' };
-    const num = nextDocNum_(sh, duzp || issued), rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10), orig = f.getName();
+    const num = nextDocNum_(sh, v.duzp || v.issued), rid = Utilities.getUuid().replace(/-/g, '').slice(0, 10), orig = f.getName();
     f.setName(num + (isTest_() ? ' TEST' : '') + docExt_(f.getMimeType()));
     try { f.moveTo(child_(driveRoot_(), DOCS_FOLDER)); } catch (e) {}
     const who = Session.getActiveUser().getEmail() || 'správce';
-    const note = [String(d.note || '').trim(), 'soubor: ' + orig].filter(Boolean).join(' · ');
-    const row = docAppend_(sh, [new Date(), issued || duzp, amount, vendor, String(d.purpose).trim().slice(0, 200), String(d.building || '').slice(0, 40), who, f.getUrl(), 'nový', rid, note.slice(0, 300), '', false, '', '', num, 'faktura', invNo, duzp || '', due || '']);
-    sh.getRange(row, dc_(sh, COL_DSEL)).insertCheckboxes();
-    setPhotoLink_(sh, row, dc_(sh, 8), '📄 ' + num, f.getUrl());
+    invAppend_(sh, f, v, d, who, rid, num, [String(d.note || '').trim(), 'soubor: ' + orig].filter(Boolean).join(' · '));
     return { ok: true, num: num, name: f.getName() };
   } finally { lock.releaseLock(); }
 }

@@ -74,6 +74,15 @@ img.shot{width:100%;border-radius:10px;display:block}
 #rdov dd{margin:0;word-break:break-word}
 #rdov .rdsec{grid-column:1/-1;font-weight:700;font-size:.8rem;text-transform:uppercase;letter-spacing:.04em;color:var(--mut);border-top:1px solid var(--line);padding-top:8px;margin-top:4px}
 .hrow[data-rid]{cursor:pointer}
+.hub{display:grid;gap:12px;margin-top:4px}
+.hubt{display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--card);color:var(--fg);border:1px solid var(--line);border-radius:16px;padding:18px 16px;font-weight:400;box-sizing:border-box}
+.hubt:active{border-color:var(--acc)}
+.hubt .hico{font-size:2rem;line-height:1;width:2.6rem;text-align:center;flex:none}
+.hubt .ht{flex:1;min-width:0}
+.hubt b{display:block;font-size:1.12rem}
+.hubt .s{display:block;font-size:.86rem;color:var(--mut);margin-top:2px}
+.hubt .go{flex:none;color:var(--mut);font-size:1.4rem}
+#rfilebox{margin-top:10px;padding:14px;border:1px dashed var(--line);border-radius:12px;text-align:center;word-break:break-word}
 #edov .card{width:100%;max-width:380px;margin:0;max-height:92vh;overflow:auto}
 #edimg{display:block;width:100%;max-height:38vh;object-fit:contain;background:#0001;border-radius:10px;margin:2px 0 6px;cursor:zoom-in}
 #edimg.hide{display:none}
@@ -85,6 +94,7 @@ img.shot{width:100%;border-radius:10px;display:block}
 #pinov input{font-size:1.6rem;text-align:center;letter-spacing:.3em}
 #ppreview{width:100%;max-height:220px;object-fit:cover;border-radius:10px;margin-top:10px}
 #ppreview.hide{display:none}
+#rprev.hide{display:none}
 #envbar{background:#b45309;color:#fff;text-align:center;font-weight:700;font-size:.78rem;letter-spacing:.02em;padding:6px 10px;border-radius:0 0 12px 12px;margin:0 -16px 6px}
 .callout.link{display:flex;align-items:center;gap:10px;cursor:pointer;border-color:#2563eb99;background:#2563eb1c;font-weight:600}
 .callout.link::after{content:"›";margin-left:auto;font-size:1.7rem;line-height:1;color:var(--acc);font-weight:700}
@@ -244,7 +254,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 <div id="envbar" class="hide">🧪 TESTOVACÍ VERZE · jiná tabulka než ostrý provoz</div>
 <div id="splash"><img src="icon-512.png" alt=""><div class="sname">Fotoapp SVJ Od Vysoké</div><div class="sbar"><i></i></div><div class="ssub" id="ssub">Načítám měřidla…</div></div>
 <main>
-<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span><span class="note" id="vms"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hdocs" type="button" aria-label="Doklady" title="Doklady (paragony)">🧾</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
+<div class="brand"><img src="icon-192.png" alt=""><h1>Fotoapp SVJ Od Vysoké <span class="note" id="ver"></span><span class="note" id="vms"></span></h1><div class="tools"><button class="themebtn" id="hrefresh" type="button" aria-label="Obnovit seznam" title="Obnovit seznam">⟳</button><button class="themebtn" id="hdocs" type="button" aria-label="Rozcestník" title="Rozcestník">🏠</button><button class="themebtn" id="hadmin" type="button" aria-label="Admin" title="Admin">🔒</button><button class="themebtn" id="theme" type="button" aria-label="Režim zobrazení"></button></div></div>
 <div class="hero" id="hero"><div class="hi" id="who"></div><div class="adminbar hide" id="adminbar"><span>🔓 Režim admin je otevřený</span><button type="button" id="adminclose">Zavřít ✕</button></div></div>
 <div class="fbox" id="fbox">
 <button type="button" class="fhead" id="fhead" aria-expanded="true"><span id="ftitle">Filtry</span><span id="fcol" aria-hidden="true">▴</span></button>
@@ -252,6 +262,14 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 </div>
 <div id="upd" class="card hide" style="border-color:var(--acc)"><strong id="updtxt">Je k dispozici nová verze.</strong><div class="row"><button id="updgo" type="button">Aktualizovat</button></div></div>
 <div id="queue" class="card hide"><span id="qtext"></span> <button class="sec" id="qgo" type="button" style="margin-top:8px">Odeslat teď</button></div>
+
+<section id="hub" class="hide">
+  <div class="hub">
+    <button type="button" class="hubt" id="hubm"><span class="hico">📏</span><span class="ht"><b>Měřidla</b><span class="s" id="hubms">Odečty vody, elektřiny a tepla</span></span><span class="go">›</span></button>
+    <button type="button" class="hubt" id="hubr"><span class="hico">🧾</span><span class="ht"><b>Účtenky (paragony)</b><span class="s">Vyfotit nákup, seznam, odeslání účetní</span></span><span class="go">›</span></button>
+    <button type="button" class="hubt" id="hubf"><span class="hico">📄</span><span class="ht"><b>Faktury</b><span class="s">Vyfotit, nebo vybrat soubor v telefonu (i PDF). AI předvyplní údaje.</span></span><span class="go">›</span></button>
+  </div>
+</section>
 
 <section id="home">
   <div id="list"></div>
@@ -318,15 +336,18 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
 
 <section id="docs" class="hide">
   <div class="card">
-    <strong>🧾 Doklady (paragony)</strong>
-    <div class="note" style="margin:4px 0 8px">Vyfoť účtenku nebo paragon. Doklad se zapíše do tabulky Doklady a fotka se uloží na Disk. Účetní ho dostane, až ho odešle ten, kdo má oprávnění odesílat doklady.</div>
-    <div class="row"><button id="rcamb" type="button">📷 Vyfotit doklad</button><button class="sec" id="rfileb" type="button">🖼️ Z galerie</button></div>
+    <strong id="rtitle">🧾 Účtenky (paragony)</strong>
+    <div class="note" id="rintro" style="margin:4px 0 8px"></div>
+    <div class="row"><button id="rcamb" type="button">📷 Vyfotit</button><button class="sec" id="rfileb" type="button">🖼️ Z galerie</button></div>
     <input id="rcam" type="file" accept="image/*" capture="environment" class="hide"><input id="rfile" type="file" accept="image/*" class="hide">
     <div id="rform" class="hide">
-      <img id="rprev" class="shot" alt="Fotka dokladu" style="margin-top:10px">
+      <img id="rprev" class="shot" alt="Náhled dokladu" style="margin-top:10px">
+      <div id="rfilebox" class="hide"></div>
       <div class="row"><button class="sec" id="rai" type="button">🤖 Přečíst z fotky (datum, částka, obchod)</button></div>
-      <div class="row" style="margin-top:6px"><div><label for="rdate">Datum dokladu</label><input id="rdate" type="date"></div><div><label for="ramount">Částka (Kč)</label><input id="ramount" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 249,90"></div></div>
-      <label for="rvendor">Obchod / dodavatel</label><input id="rvendor" type="text" autocomplete="off" placeholder="např. Hornbach">
+      <div class="inv hide"><div class="row" style="margin-top:6px"><div><label for="rinvno">Číslo faktury</label><input id="rinvno" type="text" autocomplete="off" placeholder="např. 260230"></div><div><label for="rico">IČO dodavatele</label><input id="rico" type="text" inputmode="numeric" autocomplete="off"></div></div></div>
+      <div class="row" style="margin-top:6px"><div><label for="rdate" id="rdatel">Datum dokladu</label><input id="rdate" type="date"></div><div><label for="ramount">Částka (Kč)</label><input id="ramount" class="num" type="text" inputmode="decimal" autocomplete="off" placeholder="např. 249,90"></div></div>
+      <div class="inv hide"><div class="row" style="margin-top:6px"><div><label for="rduzp">DUZP</label><input id="rduzp" type="date"></div><div><label for="rdue">Splatnost</label><input id="rdue" type="date"></div></div></div>
+      <label for="rvendor" id="rvendorl">Obchod / dodavatel</label><input id="rvendor" type="text" autocomplete="off" placeholder="např. Hornbach">
       <label for="rpurpose">Účel (na co)</label><input id="rpurpose" type="text" autocomplete="off" placeholder="např. žárovky do sklepa">
       <label for="rbuild">Budova (nepovinné)</label><select id="rbuild" style="width:100%"></select>
       <label for="rnote">Poznámka (nepovinná)</label><input id="rnote" type="text" autocomplete="off">
@@ -339,7 +360,7 @@ body.adminmode #hero,body.adminmode #sbar,body.adminmode #list,body.adminmode #h
     <div class="note hide" id="raccnote"></div>
     <div id="rlist"><p class="note">Načítám…</p></div>
   </div>
-  <button class="sec" id="rhome" type="button" style="width:100%">Zpět na seznam měřidel</button>
+  <button class="sec" id="rhome" type="button" style="width:100%">Zpět na rozcestník</button>
 </section>
 
 <section id="detail" class="hide">
@@ -402,7 +423,7 @@ const ENDPOINTS = {
   test: 'https://script.google.com/macros/s/AKfycbxs9B0HfgFENA7_BO4VSgoAY8gHmhxAC32D5nKJf902OufOF6bqKSR-T9N1ZInRk_Hm/exec' // testovací skript
 };
 const ENDPOINT = ENDPOINTS[ENV], NS = ENV === 'test' ? 'T:' : '';
-const VERSION = '1.53.0';
+const VERSION = '1.54.0';
 const $ = id => document.getElementById(id);
 const lsGet = k => { try { return localStorage.getItem(NS + k); } catch (e) { return null; } };
 const lsSet = (k, v) => { try { localStorage.setItem(NS + k, v); } catch (e) {} };
@@ -467,6 +488,7 @@ async function flushQueue() {
       try {
         const r = await post(it.val);
         if (r.ok) { await idbDel(it.key); sent++; if (r.warn) toast('Odesláno, ale hodnota je nižší než minule.', 5000); else if (r.pendingValue) toast('Hodnotu z fotky se nepodařilo přečíst. Výbor dostane e-mail a doplní ji.', 6000); }
+        else if (r.dup) { await idbDel(it.key); toast(String(r.error || 'Doklad už je zapsaný.') + ' Ze záložní fronty jsem ho vyřadil.', 8000); }
         else if (r.error === 'token' || r.error === 'data' || r.error === 'forbidden') { await idbDel(it.key); toast(r.error === 'forbidden' ? 'Záznam se nezapsal: k tomuto měřidlu nemáš oprávnění zapisovat.' : 'Jeden záznam se nepodařilo odeslat (neplatný odkaz nebo data).', 6000); }
         else break;
       } catch (e) { break; }
@@ -484,7 +506,7 @@ let meters = [], current = null, canEdit = lsGet('meridla.edit') !== '0', canEdi
 let canDocs = /1/.test(lsGet('meridla.docs') || ''), canAcc = /A/.test(lsGet('meridla.docs') || '');
 // kdo smí jen prohlížet, nevidí focení ani admin
 const editable = m => !m || m.editable !== false;
-function applyEdit() { $('hadmin').classList.toggle('hide', !canEdit); $('hdocs').classList.toggle('hide', !canDocs); $('archsec').classList.toggle('hide', !canEditAll); if (!canEdit) $('homenote').textContent = 'Máš oprávnění jen prohlížet. Odečty zapisovat nemůžeš.'; }
+function applyEdit() { if (typeof paintHub === 'function') paintHub(); if (!canDocs && !$('hub').classList.contains('hide')) show('home'); $('hadmin').classList.toggle('hide', !canEdit); $('hdocs').classList.toggle('hide', !canDocs); $('archsec').classList.toggle('hide', !canEditAll); if (!canEdit) $('homenote').textContent = 'Máš oprávnění jen prohlížet. Odečty zapisovat nemůžeš.'; }
 const iconFor = m => { if (m.icon) return m.icon; const n = ((m.typeName || '') + ' ' + m.name + ' ' + (m.unit || '')).toLowerCase(); return /elektr|kwh/.test(n) ? '⚡' : /vod|m³/.test(n) && !/plyn/.test(n) ? '💧' : /plyn/.test(n) ? '🔥' : /tepl|kalor|gj|mwh/.test(n) ? '🌡️' : '📟'; };
 const isDue = m => m.due !== undefined ? m.due : !m.doneThisWeek;
 const plural = (n, a, b, c) => n === 1 ? a : n >= 2 && n <= 4 ? b : c;
@@ -646,12 +668,34 @@ async function showRecordPhoto(pid, title) {
 // ================= doklady (paragony) =================
 let rPhoto = '', rBusy = false;
 const fmtKc = v => Number(v).toLocaleString('cs-CZ', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' Kč';
-function openDocs() { show('docs'); rReset(); loadReceipts(); }
-$('hdocs').onclick = openDocs;
-$('rhome').onclick = () => show('home');
+let rMode = 'paragon', rMime = 'image/jpeg', rAll = null, rAccMail = false, hubNav = false;
+const isInv = () => rMode === 'faktura';
+function openDocs(mode) {
+  hubNav = true; rMode = mode === 'faktura' ? 'faktura' : 'paragon';
+  const inv = isInv();
+  $('rtitle').textContent = inv ? '📄 Faktury' : '🧾 Účtenky (paragony)';
+  $('rintro').textContent = inv ? 'Fakturu vyfoť, nebo vyber soubor v telefonu (PDF i obrázek, třeba přílohu z e-mailu uloženou do Souborů). AI předvyplní údaje, ty je zkontroluješ. Faktura dostane interní číslo a zapíše se do tabulky Doklady stejně jako přes tabulku.' : 'Vyfoť účtenku nebo paragon. Doklad se zapíše do tabulky Doklady a fotka se uloží na Disk. Účetní ho dostane, až ho odešle ten, kdo má oprávnění odesílat doklady.';
+  $('rcamb').textContent = inv ? '📷 Vyfotit fakturu' : '📷 Vyfotit účtenku';
+  $('rfileb').textContent = inv ? '📁 Vybrat soubor' : '🖼️ Z galerie';
+  $('rfile').accept = inv ? 'image/*,application/pdf,.pdf' : 'image/*';
+  document.querySelectorAll('#rform .inv').forEach(e => e.classList.toggle('hide', !inv));
+  $('rdatel').textContent = inv ? 'Datum vystavení' : 'Datum dokladu';
+  $('rvendorl').textContent = inv ? 'Dodavatel' : 'Obchod / dodavatel';
+  $('rvendor').placeholder = inv ? 'název firmy' : 'např. Hornbach';
+  $('rpurpose').placeholder = inv ? 'např. servis kotlů' : 'např. žárovky do sklepa';
+  $('rsave').textContent = inv ? 'Uložit fakturu' : 'Uložit doklad';
+  show('docs'); rReset(); paintReceipts(); loadReceipts();
+}
+function openHub() { if (!canDocs) { show('home'); return; } paintHub(); show('hub'); }
+function paintHub() { const n = meters.filter(m => editable(m) && isDue(m)).length; $('hubms').textContent = !meters.length ? 'Odečty vody, elektřiny a tepla' : n ? n + ' ' + plural(n, 'měřidlo čeká', 'měřidla čekají', 'měřidel čeká') + ' na odečet' : 'Všechno odečtené ✓'; }
+$('hdocs').onclick = openHub;
+$('hubm').onclick = () => { hubNav = true; show('home'); };
+$('hubr').onclick = () => openDocs('paragon');
+$('hubf').onclick = () => openDocs('faktura');
+$('rhome').onclick = openHub;
 function rReset() {
-  rPhoto = ''; $('rform').classList.add('hide'); $('rprev').removeAttribute('src');
-  ['ramount', 'rvendor', 'rpurpose', 'rnote'].forEach(i => { $(i).value = ''; });
+  rPhoto = ''; rMime = 'image/jpeg'; $('rform').classList.add('hide'); $('rprev').removeAttribute('src'); $('rprev').classList.remove('hide'); $('rfilebox').classList.add('hide');
+  ['ramount', 'rvendor', 'rpurpose', 'rnote', 'rinvno', 'rico', 'rduzp', 'rdue'].forEach(i => { $(i).value = ''; });
   $('rdate').value = ymdOf(new Date()); $('rdate').max = ymdOf(new Date()); $('rstat').textContent = '';
   const sel = $('rbuild'); sel.textContent = '';
   ['', ...buildingList()].forEach(b => { const o = document.createElement('option'); o.value = b; o.textContent = b ? bLabel(b) : '— společné / neurčeno —'; sel.appendChild(o); });
@@ -659,14 +703,27 @@ function rReset() {
 // fotka se zmenší na 1600 px (čitelné drobné písmo účtenky) a ukáže se formulář
 async function pickReceipt(file) {
   if (!file) return;
+  const inv = isInv(), pdf = /pdf/i.test(file.type || '') || /\.pdf$/i.test(file.name || '');
+  $('rai').textContent = inv ? '🤖 Přečíst fakturu (AI předvyplní údaje)' : '🤖 Přečíst z fotky (datum, částka, obchod)';
   try {
-    const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }), k = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
-    const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
-    cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
-    const url = cv.toDataURL('image/jpeg', 0.85); rPhoto = url.split(',')[1];
-    $('rprev').src = url; $('rform').classList.remove('hide'); $('rstat').textContent = '';
+    if (pdf) {
+      if (!inv) return toast('Účtenku vyfoť nebo vyber jako obrázek. PDF patří do Faktur.', 5000);
+      if (file.size > 10 * 1024 * 1024) return toast('Soubor je větší než 10 MB, ten neuložím.', 5000);
+      const b64 = await new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result).split(',')[1] || ''); fr.onerror = () => rej(fr.error); fr.readAsDataURL(file); });
+      if (!b64) throw new Error('empty');
+      rPhoto = b64; rMime = 'application/pdf';
+      $('rprev').classList.add('hide'); $('rprev').removeAttribute('src');
+      const box = $('rfilebox'); box.textContent = ''; const b = document.createElement('b'); b.textContent = '📄 ' + (file.name || 'faktura.pdf'); const n = document.createElement('div'); n.className = 'note'; n.textContent = 'PDF · ' + Math.max(1, Math.round(file.size / 1024)) + ' kB'; box.append(b, n); box.classList.remove('hide');
+    } else {
+      const max = inv ? 2000 : 1600, bmp = await createImageBitmap(file, { imageOrientation: 'from-image' }), k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const cv = document.createElement('canvas'); cv.width = Math.round(bmp.width * k); cv.height = Math.round(bmp.height * k);
+      cv.getContext('2d').drawImage(bmp, 0, 0, cv.width, cv.height);
+      const url = cv.toDataURL('image/jpeg', inv ? 0.88 : 0.85); rPhoto = url.split(',')[1]; rMime = 'image/jpeg';
+      $('rprev').src = url; $('rprev').classList.remove('hide'); $('rfilebox').classList.add('hide');
+    }
+    $('rform').classList.remove('hide'); $('rstat').textContent = '';
     $('rai').disabled = navigator.onLine === false;
-  } catch (e) { $('rstat').textContent = 'Fotku se nepodařilo zpracovat.'; }
+  } catch (e) { $('rform').classList.remove('hide'); $('rstat').textContent = pdf ? 'Soubor se nepodařilo načíst.' : 'Fotku se nepodařilo zpracovat.'; }
 }
 $('rcamb').onclick = () => $('rcam').click();
 $('rfileb').onclick = () => $('rfile').click();
@@ -676,7 +733,23 @@ $('rcancel').onclick = rReset;
 const rLock = on => { rBusy = on; ['rsave', 'rai', 'rcancel', 'rcamb', 'rfileb'].forEach(i => { $(i).disabled = on; }); };
 $('rai').onclick = async () => {
   if (!rPhoto || rBusy) return;
-  rLock(true); $('rstat').innerHTML = '<span class="spin sm"></span>AI čte doklad…';
+  rLock(true); $('rstat').innerHTML = '<span class="spin sm"></span>AI čte ' + (isInv() ? 'fakturu' : 'doklad') + '…';
+  if (isInv()) {
+    try {
+      const r = await post({ token: token(), action: 'invoiceRead', file: rPhoto, mime: rMime });
+      if (r.ok) {
+        const today = ymdOf(new Date()), put = (id, v) => { if (v && !$(id).value.trim()) $(id).value = v; };
+        put('rvendor', r.vendor); put('rico', r.ico); put('rinvno', r.invNo); put('rpurpose', r.subject);
+        if (r.issued && r.issued <= today) $('rdate').value = r.issued;
+        if (r.duzp) $('rduzp').value = r.duzp;
+        if (r.due) $('rdue').value = r.due;
+        if (r.amount !== null && r.amount !== undefined) $('ramount').value = String(r.amount).replace('.', ',');
+        $('rstat').textContent = 'Předvyplněno. Zkontroluj údaje podle faktury a doplň účel.';
+      } else $('rstat').textContent = (r.error === 'forbidden' ? 'Nemáš oprávnění.' : String(r.error || 'AI fakturu nepřečetla.').slice(0, 160)) + ' Vyplň údaje ručně.';
+    } catch (e) { $('rstat').textContent = 'Bez připojení. Vyplň údaje ručně.'; }
+    finally { rLock(false); $('rai').disabled = navigator.onLine === false; }
+    return;
+  }
   try {
     const r = await post({ token: token(), action: 'receiptRead', photo: rPhoto });
     if (r.ok) {
@@ -688,8 +761,27 @@ $('rai').onclick = async () => {
   } catch (e) { $('rstat').textContent = 'Bez připojení. Vyplň údaje ručně.'; }
   finally { rLock(false); $('rai').disabled = navigator.onLine === false; }
 };
+async function saveInvoice(force) {
+  const amount = parseNum($('ramount').value), issued = $('rdate').value, duzp = $('rduzp').value, purpose = $('rpurpose').value.trim();
+  if (!rPhoto) return ($('rstat').textContent = 'Nejdřív vyfoť nebo vyber fakturu.');
+  if (!issued && !duzp) return ($('rstat').textContent = 'Zadej datum vystavení nebo DUZP.');
+  if (issued && issued > ymdOf(new Date())) return ($('rstat').textContent = 'Datum vystavení nesmí být v budoucnosti.');
+  if ($('ramount').value.trim() === '' || !isFinite(amount)) return ($('rstat').textContent = 'Zadej částku jako číslo.');
+  if (!purpose) return ($('rstat').textContent = 'Napiš účel (na co faktura je).');
+  const body = { token: token(), action: 'invoice', file: rPhoto, mime: rMime, issued: issued, duzp: duzp, due: $('rdue').value, amount: Math.round(amount * 100) / 100, vendor: $('rvendor').value.trim(), ico: $('rico').value.trim(), invNo: $('rinvno').value.trim(), purpose: purpose, building: $('rbuild').value, note: $('rnote').value.trim(), clientId: newClientId(), force: !!force };
+  const queueIt = async msg => { try { await idbAdd(body); await showQueue(); toast(msg, 5500); rReset(); flushQueue(); } catch (e) { $('rstat').textContent = 'Fakturu se nepodařilo uložit do telefonu.'; } };
+  if (navigator.onLine === false) return queueIt('Faktura je uložená v telefonu a odešle se sama, až bude signál.');
+  rLock(true); $('rstat').innerHTML = '<span class="spin sm"></span>Ukládám fakturu…';
+  let r = null; try { r = await post(body); } catch (e) { r = null; }
+  rLock(false);
+  if (!r) return queueIt('Odeslání se nepovedlo. Faktura je uložená v telefonu a odešle se sama.');
+  if (!r.ok && r.dup) { $('rstat').textContent = ''; if (confirm(r.error + '\n\nZapsat ji přesto znovu?')) return saveInvoice(true); return; }
+  if (!r.ok) { $('rstat').textContent = r.error === 'forbidden' ? 'Nemáš oprávnění zapisovat doklady.' : String(r.error || 'Uložení se nepovedlo.'); return; }
+  toast(r.dup ? 'Faktura už byla uložena.' : 'Faktura uložena' + (r.num ? ' jako ' + r.num : '') + ' ✓', 4000); rReset(); loadReceipts();
+}
 $('rsave').onclick = async () => {
   if (rBusy) return;
+  if (isInv()) return saveInvoice(false);
   const amount = parseNum($('ramount').value), date = $('rdate').value, purpose = $('rpurpose').value.trim();
   if (!rPhoto) return ($('rstat').textContent = 'Nejdřív vyfoť doklad.');
   if (!date) return ($('rstat').textContent = 'Zadej datum dokladu.');
@@ -708,18 +800,26 @@ $('rsave').onclick = async () => {
 };
 async function loadReceipts() {
   const box = $('rlist');
-  $('rlisttitle').textContent = canAcc ? 'Doklady' : 'Moje doklady';
   try {
     const r = await api('?token=' + encodeURIComponent(token()) + '&action=receipts');
     if (!r.ok) { box.innerHTML = '<p class="note warn">Doklady se nepodařilo načíst.</p>'; return; }
+    rAll = r.items; rAccMail = !!r.accountant; paintReceipts();
+  } catch (e) { box.innerHTML = '<p class="note warn">Bez připojení: doklady nejde načíst.</p>'; }
+}
+function paintReceipts() {
+  const box = $('rlist'), inv = isInv();
+  $('rlisttitle').textContent = (canAcc ? '' : 'Moje ') + (inv ? (canAcc ? 'Faktury' : 'faktury') : (canAcc ? 'Paragony' : 'paragony'));
+  if (!rAll) { box.innerHTML = '<p class="note">Načítám…</p>'; $('rsendacc').classList.add('hide'); return; }
+  {
+    const r = { items: rAll.filter(x => (x.type === 'faktura') === inv), accountant: rAccMail };
     const esc = x => String(x || '').replace(/</g, '&lt;'), sent = x => /^odesl/i.test(x.status);
     // kdo odesílá účetní, vybírá nové doklady zaškrtnutím
     rItems = {}; r.items.forEach(x => { rItems[x.rid] = x; });
-    box.innerHTML = r.items.length ? r.items.map(x => '<div class="hrow" data-rid="' + esc(x.rid).replace(/"/g, '') + '">' + (canAcc && !sent(x) ? '<input type="checkbox" class="rsel" data-rid="' + esc(x.rid).replace(/"/g, '') + '" aria-label="Vybrat k odeslání">' : '') + '<span style="flex:1">' + (x.num ? '<b>' + esc(x.num) + '</b> · ' : '') + fmtDay(x.date) + (x.type === 'faktura' ? ' · 📄 faktura' + (x.invNo ? ' č. ' + esc(x.invNo) : '') : '') + '<br><span class="note">' + esc(x.vendor || '–') + ' · ' + esc(x.purpose) + (x.building ? ' · ' + esc(x.building) : '') + '</span><br><span class="src">' + esc(x.who) + (x.pid ? ' · <a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="doklad">' + (x.type === 'faktura' ? '📄 náhled' : '📷 fotka') + '</a>' : '') + '</span></span><span style="text-align:right"><b>' + fmtKc(x.amount) + '</b><br>' + (sent(x) ? '<span class="chip ok">odesláno</span>' : '<span class="chip todo">nový</span>') + '</span></div>').join('') : '<p class="note">Zatím žádné doklady.</p>';
+    box.innerHTML = r.items.length ? r.items.map(x => '<div class="hrow" data-rid="' + esc(x.rid).replace(/"/g, '') + '">' + (canAcc && !sent(x) ? '<input type="checkbox" class="rsel" data-rid="' + esc(x.rid).replace(/"/g, '') + '" aria-label="Vybrat k odeslání">' : '') + '<span style="flex:1">' + (x.num ? '<b>' + esc(x.num) + '</b> · ' : '') + fmtDay(x.date) + (x.type === 'faktura' ? ' · 📄 faktura' + (x.invNo ? ' č. ' + esc(x.invNo) : '') : '') + '<br><span class="note">' + esc(x.vendor || '–') + ' · ' + esc(x.purpose) + (x.building ? ' · ' + esc(x.building) : '') + '</span><br><span class="src">' + esc(x.who) + (x.pid ? ' · <a href="#" data-pid="' + x.pid.replace(/[^\w-]/g, '') + '" data-t="doklad">' + (x.type === 'faktura' ? '📄 náhled' : '📷 fotka') + '</a>' : '') + '</span></span><span style="text-align:right"><b>' + fmtKc(x.amount) + '</b><br>' + (sent(x) ? '<span class="chip ok">odesláno</span>' : '<span class="chip todo">nový</span>') + '</span></div>').join('') : '<p class="note">' + (inv ? 'Zatím žádné faktury.' : 'Zatím žádné paragony.') + '</p>';
     $('rsendacc').classList.toggle('hide', !(canAcc && r.accountant && r.items.some(x => !sent(x))));
     $('raccnote').classList.toggle('hide', !(canAcc && !r.accountant)); $('raccnote').textContent = 'E-mail účetní není nastavený. Nastav ho v tabulce: Měřidla → Doklady → Nastavit e-mail účetní.';
     paintSel();
-  } catch (e) { box.innerHTML = '<p class="note warn">Bez připojení: doklady nejde načíst.</p>'; }
+  }
 }
 const selRids = () => [...document.querySelectorAll('#rlist .rsel:checked')].map(c => c.dataset.rid);
 function paintSel() { const n = selRids().length; $('rsendacc').disabled = !n; $('rsendacc').textContent = '📧 Odeslat vybrané' + (n ? ' (' + n + ')' : ''); }
@@ -776,7 +876,7 @@ $('rdclose').onclick = () => { rdPid = ''; $('rdov').classList.add('hide'); };
 $('rdov').onclick = e => { if (e.target.id === 'rdov') $('rdclose').onclick(); };
 $('rsendacc').onclick = async () => {
   const ids = selRids(); if (!ids.length) return;
-  const msg = prompt('Odeslat ' + ids.length + ' vybraných dokladů účetní (s fotkami v příloze, zapíšou se i do Faktur).\n\nZpráva pro účetní (nepovinné), např. „Proplaceno z účtu SVJ jedním příkazem Janu Novákovi“:', '');
+  const msg = prompt('Odeslat ' + ids.length + ' vybraných dokladů účetní (doklady v příloze, zapíšou se i do listu Faktury).\n\nZpráva pro účetní (nepovinné), např. „Proplaceno z účtu SVJ jedním příkazem Janu Novákovi“:', '');
   if (msg === null) return;
   const extra = prompt('Poslat také na e-mail? (nepovinné, víc adres odděl čárkou; výbor dostane kopii automaticky)', '');
   if (extra === null) return;
@@ -939,8 +1039,8 @@ $('pupload').onclick = async () => {
 
 // ================= obrazovky =================
 function show(name) {
-  ['home', 'meter', 'hist', 'detail', 'docs'].forEach(n => $(n).classList.toggle('hide', !(n === name || (name === 'meter' && n === 'hist'))));
-  $('hero').style.display = name === 'home' ? '' : 'none'; $('fbox').style.display = name === 'home' ? '' : 'none';
+  ['hub', 'home', 'meter', 'hist', 'detail', 'docs'].forEach(n => $(n).classList.toggle('hide', !(n === name || (name === 'meter' && n === 'hist'))));
+  $('hero').style.display = name === 'home' || name === 'hub' ? '' : 'none'; $('fbox').style.display = name === 'home' ? '' : 'none';
   window.scrollTo(0, 0);
 }
 function openMeter(m) {
@@ -1508,7 +1608,8 @@ function hideSplash() { const s = $('splash'); if (!s || s.classList.contains('o
 // poslední známý seznam se ukáže hned, čerstvý se dotáhne na pozadí
 let shownFromCache = false;
 try { const c = JSON.parse(lsGet('meridla.meters') || '[]'); if (c.length) { meters = c; shownFromCache = true; showWho(); applyEdit(); renderAll(); $('homenote').textContent = 'Aktualizuji…'; } } catch (e) {}
-const loading = loadList().catch(() => {}).then(() => { const t = $('ssub'); if (t) t.textContent = 'Hotovo ✓'; });
+if (canDocs) openHub();
+const loading = loadList().catch(() => {}).then(() => { if (canDocs && !hubNav && !$('home').classList.contains('hide') && !document.body.classList.contains('adminmode')) openHub(); const t = $('ssub'); if (t) t.textContent = 'Hotovo ✓'; });
 showQueue(); flushQueue();
 loading.then(() => setTimeout(hideSplash, Math.max(350, SPLASH_MIN - (Date.now() - splashStart))));
 if (shownFromCache) setTimeout(hideSplash, 900); // seznam z paměti je už vidět, čerstvý se dotáhne na pozadí

@@ -9,7 +9,7 @@
  */
 
 // verze skriptu (zvyšuje se při změně kódu); ověření: adresa nasazení + ?action=version
-const SCRIPT_VERSION = '1.53.1';
+const SCRIPT_VERSION = '1.54.0';
 const SHEET_METERS = 'Měřidla';
 const SHEET_READINGS = 'Odečty';
 const SHEET_PEOPLE = 'Lidé';
@@ -539,6 +539,8 @@ function doPost(e) {
   if (body.action === 'paperUpload' && !P.editAll) return denied(); // arch se týká všech budov
   // doklady (paragony)
   if (body.action === 'receipt') { if (!(P.docs || P.acc)) return denied(); const rr = receiptSave_(body, who); if (rr.ok && !rr.dup) dashRefreshSafe_(); return ok_(rr); }
+  if (body.action === 'invoice') { if (!(P.docs || P.acc)) return denied(); const ri = invoiceSave_(body, who); if (ri.ok && !ri.dup) dashRefreshSafe_(); return ok_(ri); }
+  if (body.action === 'invoiceRead') return P.docs || P.acc ? ok_(invRead_(body.file, body.mime)) : denied();
   if (body.action === 'receiptRead') return P.docs || P.acc ? ok_(receiptRead_(body.photo)) : denied();
   if (body.action === 'receiptsSend') { if (!P.acc) return denied(); const rs = receiptsSend_(body, who); if (rs.ok && rs.count) dashRefreshSafe_(); return ok_(rs); }
   if (body.action === 'lock') return P.edit && mine(body.id) ? ok_(meterLock_(body, who)) : denied();
